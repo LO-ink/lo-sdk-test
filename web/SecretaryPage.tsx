@@ -90,8 +90,14 @@ export function SecretaryPage({
     flow.draft?.state === "sent" &&
     Boolean(flow.draft.messageId);
   return (
-    <Stack as="section" className="run-panel" aria-labelledby="secretary-heading">
-      <Heading level={2} id="secretary-heading">Секретарь</Heading>
+    <Stack
+      as="section"
+      className="run-panel"
+      aria-labelledby="secretary-heading"
+    >
+      <Heading level={2} id="secretary-heading">
+        Секретарь
+      </Heading>
       <Text>
         Проверка отдельного тестового бота: входящее, черновик, одобрение в LO и
         серверное подтверждение отправки.
@@ -153,7 +159,9 @@ export function SecretaryPage({
                     этот текст:
                   </Text>
                   <Text>
-                    <Text as="code" family="mono">{flow.challenge}</Text>
+                    <Text as="code" family="mono">
+                      {flow.challenge}
+                    </Text>
                   </Text>
                   <Button
                     disabled={busy || flow.expired}
