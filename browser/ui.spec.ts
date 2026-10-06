@@ -154,3 +154,64 @@ for (const scheme of ["light", "dark"] as const) {
     expect(errors).toEqual([]);
   });
 }
+
+test("SDK appearance binding selects the published UI theme and canvas", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ status: 503, json: {} }),
+  );
+  await page.goto("/");
+  const result = await page.evaluate(async () => {
+    const modulePath = "/node_modules/@lo-ink/miniapp-sdk/dist/index.js";
+    const { bindAppearance, createMiniAppClient } = await import(
+      /* @vite-ignore */ modulePath
+    );
+    const root = document.createElement("section");
+    root.className = "lo-ui-root lo-ui-surface";
+    document.body.append(root);
+    const client = createMiniAppClient({
+      id: "lo",
+      launchData: "appearance-fixture",
+      capabilities: new Set(),
+      snapshot: () => ({ colorScheme: "dark" }),
+      subscribe: () => () => {},
+      execute: () => Promise.resolve(),
+    });
+    const bind = () =>
+      bindAppearance(client, {
+        root,
+        prefersDark: () => false,
+        background: (name: string) =>
+          getComputedStyle(root).getPropertyValue(name),
+        onPreferenceChange: () => () => {},
+      });
+    let release = bind();
+    const dark = {
+      theme: root.dataset.loTheme,
+      canvas: getComputedStyle(root)
+        .getPropertyValue("--lo-color-canvas")
+        .trim(),
+      text: getComputedStyle(root).color,
+    };
+    release();
+    root.dataset.preference = "light";
+    release = bind();
+    const light = {
+      theme: root.dataset.loTheme,
+      canvas: getComputedStyle(root)
+        .getPropertyValue("--lo-color-canvas")
+        .trim(),
+      text: getComputedStyle(root).color,
+    };
+    release();
+    client.dispose();
+    root.remove();
+    return { dark, light };
+  });
+  expect(result).toEqual({
+    dark: { theme: "dark", canvas: "#0b0e17", text: "rgb(247, 251, 255)" },
+    light: { theme: "light", canvas: "#f7fbff", text: "rgb(18, 22, 36)" },
+  });
+});

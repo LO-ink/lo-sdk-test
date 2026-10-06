@@ -258,28 +258,6 @@ test("stored runs require bounded valid metadata, current dependencies, owned ke
   assert.equal(sameOwner(before, { appId: "app", userId: "other" }), false);
 });
 
-test("only the reviewed 0.4.21 dependency set migrates, and unconfirmed old cleanup blocks resume", () => {
-  const store = storage(),
-    before = report();
-  store.setItem(
-    lastRunKey,
-    JSON.stringify({ appVersion: "0.4.21", report: before }),
-  );
-  assert.equal(readRun(store, dependencies)?.id, id);
-  assert.equal(readRun(store, "changed"), null);
-  before.checks.at(-1)!.state = "pending";
-  store.setItem(
-    lastRunKey,
-    JSON.stringify({ appVersion: "0.4.21", report: before }),
-  );
-  assert.equal(canResume(readRun(store, dependencies)), false);
-  store.setItem(
-    lastRunKey,
-    JSON.stringify({ appVersion: "0.4.20", report: report() }),
-  );
-  assert.equal(readRun(store, dependencies), null);
-});
-
 function suiteFixture(
   resumeChecks: CheckResult[],
   recovery?: NonNullable<RunReport["recovery"]>[string],
@@ -424,85 +402,19 @@ test("successful inverse cleanup retires scanner and fullscreen intents without 
   }
 });
 
-test("the reviewed UI-only upgrade preserves a 0.4.22 run but rejects execution or provenance changes", () => {
-  const oldPackages = sdkBuild.packages.map((entry) => ({
-    ...entry,
-    version: ["@lo-ink/ui", "@lo-ink/design-tokens"].includes(entry.name)
-      ? "0.1.1"
-      : entry.version,
-  }));
-  const upgradedPackages = oldPackages.map((entry) => ({
-    ...entry,
-    version: ["@lo-ink/ui", "@lo-ink/design-tokens"].includes(entry.name)
-      ? "0.2.0"
-      : entry.version,
-  }));
-  const previous = dependencyKey(oldPackages);
-  const upgraded = dependencyKey(upgradedPackages);
-  const before = report();
-  before.owner = { appId: "example-app", userId: "example-user" };
-  const store = storage();
-  saveRun(store, before, "0.4.22", previous);
-  const migrated = readRun(store, upgraded)!;
-  assert.deepEqual(migrated, before);
-  assert.equal(canResume(migrated), true);
-  assert.equal(
-    sameOwner(migrated, { appId: "example-app", userId: "another-user" }),
-    false,
-  );
-  const changedSdk = upgradedPackages.map((entry) => ({
-    ...entry,
-    version: entry.name === "@lo-ink/miniapp-sdk" ? "0.21.2" : entry.version,
-  }));
-  assert.equal(readRun(store, dependencyKey(changedSdk)), null);
-  const raw = JSON.parse(store.getItem(lastRunKey)!) as {
-    appVersion: string;
-    schema: number;
-  };
-  raw.appVersion = "0.4.20";
-  store.setItem(lastRunKey, JSON.stringify(raw));
-  assert.equal(readRun(store, upgraded), null);
-  raw.appVersion = "0.4.22";
-  raw.schema = 2;
-  store.setItem(lastRunKey, JSON.stringify(raw));
-  assert.equal(readRun(store, upgraded), null);
-});
-
-test("the reviewed UI primitive and font upgrade preserves reviewed 0.4.22/0.4.23 runs and rejects unreviewed builds", () => {
-  const previousPackages = sdkBuild.packages.map((entry) => ({
-    ...entry,
-    version: ["@lo-ink/ui", "@lo-ink/design-tokens"].includes(entry.name)
-      ? "0.2.0"
-      : entry.version,
-  }));
-  const targetPackages = previousPackages.map((entry) => ({
-    ...entry,
-    version: ["@lo-ink/ui", "@lo-ink/design-tokens"].includes(entry.name)
-      ? "0.3.0"
-      : entry.version,
-  }));
-  const dependencies = dependencyKey(targetPackages);
+test("native SDK upgrades and schema-less historical reports cannot relabel old evidence", () => {
   const store = storage();
   const before = report();
-  saveRun(store, before, "0.4.23", dependencyKey(previousPackages));
+  saveRun(store, before, "0.4.26", dependencies);
   assert.deepEqual(readRun(store, dependencies), before);
-  assert.equal(
-    readRun(
-      store,
-      dependencies.replace("@lo-ink/ui@0.3.0", "@lo-ink/ui@0.2.2"),
-    ),
-    null,
+  const priorDependencies = dependencies.replace(
+    "@lo-ink/miniapp-sdk@0.22.0",
+    "@lo-ink/miniapp-sdk@0.21.1",
   );
-  saveRun(store, before, "0.4.22", dependencyKey(previousPackages));
+  assert.notEqual(priorDependencies, dependencies);
+  saveRun(store, before, "0.4.25", priorDependencies);
   assert.equal(readRun(store, dependencies), null);
-  const oldPackages = previousPackages.map((entry) => ({
-    ...entry,
-    version: ["@lo-ink/ui", "@lo-ink/design-tokens"].includes(entry.name)
-      ? "0.1.1"
-      : entry.version,
-  }));
-  saveRun(store, before, "0.4.22", dependencyKey(oldPackages));
-  assert.deepEqual(readRun(store, dependencies), before);
-  saveRun(store, before, "0.4.20", dependencyKey(oldPackages));
+  const legacy = { appVersion: "0.4.21", dependencies, report: before };
+  store.setItem(lastRunKey, JSON.stringify(legacy));
   assert.equal(readRun(store, dependencies), null);
 });

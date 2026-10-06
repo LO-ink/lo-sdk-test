@@ -1,6 +1,12 @@
 module.exports = {
   forbidden: [
     {
+      name: "native-lo-uses-own-sdk",
+      severity: "error",
+      from: { path: "^(web|server)/" },
+      to: { path: "(^|/)@lo-ink/(adapter-lo|bot-http-lo)(/|$)" },
+    },
+    {
       name: "no-cycles",
       severity: "error",
       from: {},

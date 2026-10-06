@@ -11,11 +11,10 @@ import {
 import { useEffect, useRef, useState } from "react";
 import {
   bindSafeAreaCss,
-  createMiniAppClient,
+  createLoClient,
   type MiniAppClient,
   type MiniAppOperation,
 } from "@lo-ink/miniapp-sdk";
-import { createAdapter } from "@lo-ink/adapter-lo";
 import { cases, events, operationNames } from "./cases.ts";
 import { applyPalette } from "./theme.ts";
 import { SecretaryPage } from "./SecretaryPage.tsx";
@@ -718,8 +717,7 @@ export function App() {
   useEffect(() => {
     mounted.current = true;
     const releases: Array<() => void> = [];
-    const adapter = createAdapter();
-    const next = adapter ? createMiniAppClient(adapter) : null;
+    const next = createLoClient();
     setClient(next);
     let frameColor = "";
     const appearance = () => {

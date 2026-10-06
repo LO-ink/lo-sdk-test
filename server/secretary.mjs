@@ -1,8 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, rename, rm } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
-import { createBotClient, createSecretaryClient } from "@lo-ink/bot-sdk";
-import { createLoHttpBotTransport } from "@lo-ink/bot-http-lo";
+import {
+  createBotClient,
+  createSecretaryClient,
+  createLoHttpBotTransport,
+} from "@lo-ink/bot-sdk";
 
 const human = /^[1-9][0-9]{0,14}$/;
 const connectionId =

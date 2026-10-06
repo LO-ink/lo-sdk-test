@@ -1,5 +1,5 @@
 {
-  "appVersion": "0.4.25",
+  "appVersion": "0.4.26",
   "source": "npm-registry",
   "repositories": [
     {
@@ -21,60 +21,46 @@
   ],
   "packages": [
     {
-      "name": "@lo-ink/bot-sdk",
-      "version": "0.4.4",
-      "repository": "lo-bot-sdk",
-      "sourceCommit": "dce0b6403a539678ce40362fb926f19e08e25af2",
-      "integrity": "sha512-TCJKm/A3ih2g1G2lbNngopnNWsQ1Es/rZcomIiLOFE3LiYME3r+pmlPdlZX0BL7UZgKoh1DoTBg0a5/zonljZg=="
-    },
-    {
-      "name": "@lo-ink/miniapp-sdk",
-      "version": "0.21.1",
-      "repository": "lo-miniapp-sdk",
-      "sourceCommit": "478935c0229b05163a15d6c4fcae50437768dc20",
-      "integrity": "sha512-mq6YY+BrI5W46JUiVCIcCfLkCZj11UImVgKr8VMvF9RAZHGH1akx+G89DnydBsMP8dTENSyeKJ0vlC/YYbmdNA=="
-    },
-    {
-      "name": "@lo-ink/adapter-lo",
-      "version": "0.23.3",
-      "repository": "lo-platform-adapters",
-      "sourceCommit": "446735dca05675502de3d242cf1e7f8d785b0a5d",
-      "integrity": "sha512-h8BebVRWZFPC0yDZrYURMxJj/FKtQsQtLf2+7xwA5wdpASJTPssKYTulXFqOSFN5gU0DkYREoSmZXc5OJrzi5w=="
-    },
-    {
       "name": "@lo-ink/adapter-lo-legacy",
-      "version": "0.2.0",
+      "version": "0.3.0",
       "repository": "lo-platform-adapters",
-      "sourceCommit": "446735dca05675502de3d242cf1e7f8d785b0a5d",
-      "integrity": "sha512-F9STt9ypDLQWGRwb1VAYdv4h0yMT/ACntG0y16XCoel6eArjVSipryvIW1QQaNG/xJKiR/0Cd9j7aaQdgUFjxA=="
+      "sourceCommit": "5e68b15ead116418d3978276cba86a5e9b5296e8",
+      "integrity": "sha512-093DwGdf3Fs9ZfLes1R0QDUJXBoQjK6KaKWY5ZagEryVo2VGmKOfyHIkyh5fnpheb8EOUY2Ic7HiCeD2rov0Hw=="
     },
     {
       "name": "@lo-ink/adapter-webapp-compat",
-      "version": "0.20.0",
+      "version": "0.20.1",
       "repository": "lo-platform-adapters",
-      "sourceCommit": "446735dca05675502de3d242cf1e7f8d785b0a5d",
-      "integrity": "sha512-U6LvH/8cs7F1oqeRbOZYF5I5bU+GNfYU/U7gfGjPNGjEao8MYIn8zzGda8JS126Z9PCZo3KVl7Wjmh0hgKvDVA=="
+      "sourceCommit": "5e68b15ead116418d3978276cba86a5e9b5296e8",
+      "integrity": "sha512-zi630gARtbtctvzrxDO+pivxI+4PQ8TYOtKihZLr3pVMUDssQo4pqymr4XPBeGPXVK7AzS9wCiS5OVURgvAQfw=="
     },
     {
-      "name": "@lo-ink/bot-http-lo",
-      "version": "0.5.1",
-      "repository": "lo-platform-adapters",
-      "sourceCommit": "04d961129def535cbeec86694930280af126ba12",
-      "integrity": "sha512-Rbb/u3c3jRbcGkeA6imiFpxm/HklP1oHjXDkyfKZ68NA3vMI8kBjQQFPHlNezw0qjzQWRYJjLxqECOJH49E/Xw=="
-    },
-    {
-      "name": "@lo-ink/ui",
-      "version": "0.3.0",
-      "repository": "lo-ui",
-      "sourceCommit": "c7a5c32d5061b2867dbedabb0230f831c0631474",
-      "integrity": "sha512-d95UXCLYNn23qSYRkAnFBFs7/jaRQqap+YOHtAV1K08aX+4/6hh9SCCwQ8KyuK7TeHeysUMYvYSGdYYMG92GcA=="
+      "name": "@lo-ink/bot-sdk",
+      "version": "0.5.0",
+      "repository": "lo-bot-sdk",
+      "sourceCommit": "ffe066ff48447ff4526da724a4b12804a94f7619",
+      "integrity": "sha512-R/E2S+xuNuKVdxauUC+gpMjgZc9++4XYjLw0wm7+nIKBBUUTY+eTF0zLi9HXiM807AyN/L0fAsCRONPWuVPPAw=="
     },
     {
       "name": "@lo-ink/design-tokens",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "repository": "lo-ui",
-      "sourceCommit": "c7a5c32d5061b2867dbedabb0230f831c0631474",
-      "integrity": "sha512-htLQZraVjVNMJjl5ozUtJTSavp7uBgSBbemHSXLpraIqKswSxg/vheubym8riypZtOjDFryDVIMJNBAPNPB/kQ=="
+      "sourceCommit": "19be6bc3ce9311305da4209be1a7c994a1e7db5b",
+      "integrity": "sha512-z0e7V02OiZX7t5q3zrqAJR5DPzMj98rDHzZJi6Xewpd4HjseUxZCG/gXX7Eo19wmsQpI7Y/C4dUqzRZ2JmK+iA=="
+    },
+    {
+      "name": "@lo-ink/miniapp-sdk",
+      "version": "0.22.0",
+      "repository": "lo-miniapp-sdk",
+      "sourceCommit": "a29a369efa092475ca05e99af0d02b2942484a93",
+      "integrity": "sha512-p9kXzV4qI9AuSx3RWu884LY5m05fP/xZtInajPr/2eue6zsC76GuNiqgYZLboKgHtQw9HeZ/r2ulLceIrsjuGw=="
+    },
+    {
+      "name": "@lo-ink/ui",
+      "version": "0.3.1",
+      "repository": "lo-ui",
+      "sourceCommit": "19be6bc3ce9311305da4209be1a7c994a1e7db5b",
+      "integrity": "sha512-oMMVVdUTkS9G8G26BMUOnO9AB9Y05rsaP/N8oAR3L23z8yzCCIFrj5w7+3rZiXy39XS1AIzZU+zPC6sFodSK0w=="
     }
   ],
   "goVerifier": {

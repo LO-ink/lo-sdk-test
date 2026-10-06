@@ -5,13 +5,13 @@ import { fileURLToPath } from "node:url";
 import { verifyInitData, InitDataError } from "@lo-ink/miniapp-sdk/server";
 import {
   createBotClient,
+  createLoHttpBotTransport,
   BotError,
   RateLimited,
   NotAllowed,
   BadRequest,
   Unavailable,
 } from "@lo-ink/bot-sdk";
-import { createLoHttpBotTransport } from "@lo-ink/bot-http-lo";
 import { createSecretaryFlow } from "./secretary.mjs";
 import { conformance } from "./conformance.mjs";
 import { createVersionChecker } from "./versions.mjs";
@@ -19,7 +19,7 @@ import { GoVerifierUnavailable } from "./initdata-go.mjs";
 
 const runtimeSdkVersions = Object.fromEntries(
   await Promise.all(
-    ["bot-sdk", "miniapp-sdk", "bot-http-lo"].map(async (name) => {
+    ["bot-sdk", "miniapp-sdk"].map(async (name) => {
       const manifest = JSON.parse(
         await readFile(
           new URL(
