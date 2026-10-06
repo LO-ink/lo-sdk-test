@@ -13,6 +13,7 @@ export type CheckResult = {
   state: CheckState;
   detail: string;
   durationMs: number;
+  interrupted?: boolean;
   bridge?: string;
   evidence?: "response" | "data" | "device" | "synthetic";
 };
@@ -21,6 +22,35 @@ export type CheckOutcome = {
   detail: string;
   evidence?: CheckResult["evidence"];
 };
+export const recoveryOperations = [
+  "startAccelerometer",
+  "startGyroscope",
+  "startDeviceOrientation",
+  "setOrientationLock",
+  "setClosingConfirmation",
+  "setVerticalSwipes",
+  "updateBiometryToken",
+  "openQrScanner",
+  "requestFullscreen",
+  "setHeaderColor",
+  "setBackgroundColor",
+  "setBottomBarColor",
+  "setButton",
+] as const;
+export type Recovery = {
+  key: string;
+  written: string[];
+  mutations: string[];
+  original: {
+    isOrientationLocked?: boolean;
+    isFullscreen?: boolean;
+    theme?: {
+      background?: string;
+      headerBackground?: string;
+      bottomBarBackground?: string;
+    };
+  };
+};
 export type RunReport = {
   id: string;
   owner?: { appId: string; userId: string };
@@ -28,6 +58,10 @@ export type RunReport = {
   finishedAt?: string;
   state: "running" | "finished" | "cancelled";
   checks: CheckResult[];
+  suiteRevision?: 1;
+  recovery?: Record<string, Recovery>;
+  resumeBlocked?: boolean;
+  resumeError?: string;
 };
 export type Check = Pick<CheckResult, "id" | "label" | "group"> & {
   bridge?: string;
@@ -76,6 +110,36 @@ export function summarize(run: RunReport) {
       : 0,
     success: tested ? Math.round((passed / tested) * 100) : null,
   };
+}
+export const unfinished = (check: CheckResult) =>
+  check.state === "pending" ||
+  check.state === "running" ||
+  check.state === "cancelled";
+export function canResume(report: RunReport | null): report is RunReport {
+  if (!report || report.state === "running") return false;
+  const debt = Object.values(report.recovery ?? {}).some(
+    (entry) => entry.written.length || entry.mutations.length,
+  );
+  if (report.resumeBlocked) return debt;
+  return (
+    report.state === "cancelled" &&
+    report.checks.some((check) => check.id !== "cleanup" && unfinished(check))
+  );
+}
+export function matchesPlan(report: RunReport, plan: Check[]): boolean {
+  return (
+    report.checks.length === plan.length &&
+    new Set(plan.map((check) => check.id)).size === plan.length &&
+    report.checks.every((check, index) => {
+      const expected = plan[index];
+      return (
+        check.id === expected.id &&
+        check.label === expected.label &&
+        check.group === expected.group &&
+        check.bridge === expected.bridge
+      );
+    })
+  );
 }
 export class CheckTimeout extends Error {
   constructor(readonly timeoutMs: number) {
@@ -135,21 +199,44 @@ export async function runChecks(
   signal: AbortSignal,
   update: (report: RunReport) => void,
   timeoutMs = 12000,
+  options: {
+    previous?: RunReport;
+    id?: string;
+    prepare?: (signal: AbortSignal) => Promise<void>;
+  } = {},
 ) {
+  const previous = options.previous;
+  if (
+    previous &&
+    (!canResume(previous) || !matchesPlan(previous, [...plan, cleanup]))
+  )
+    throw new Error(
+      "Сохранённый прогон не подходит для продолжения. Запустите новую проверку.",
+    );
   const report: RunReport = {
-    id: crypto.randomUUID(),
-    startedAt: new Date().toISOString(),
+    id: previous?.id ?? options.id ?? crypto.randomUUID(),
+    owner: previous?.owner,
+    startedAt: previous?.startedAt ?? new Date().toISOString(),
+    suiteRevision: 1,
     state: "running",
-    checks: [...plan, cleanup].map((c) => ({
-      id: c.id,
-      label: c.label,
-      group: c.group,
-      bridge: c.bridge,
-      evidence: c.evidence,
-      state: "pending",
-      detail: "Ещё не запускалась",
-      durationMs: 0,
-    })),
+    checks: [...plan, cleanup].map((c, index) => {
+      const saved = previous?.checks[index];
+      if (saved && c.id !== cleanup.id && !unfinished(saved))
+        return { ...saved };
+      return {
+        id: c.id,
+        label: c.label,
+        group: c.group,
+        bridge: c.bridge,
+        evidence: c.evidence,
+        state: "pending",
+        detail: "Ещё не запускалась",
+        durationMs: 0,
+        ...(saved?.interrupted || saved?.state === "running"
+          ? { interrupted: true }
+          : {}),
+      };
+    }),
   };
   let cleanupFailed = false;
   const publish = () =>
@@ -187,6 +274,7 @@ export async function runChecks(
         error instanceof CheckTimeout &&
         error.timeoutMs === (check.timeoutMs ?? timeoutMs) &&
         check.timeoutState === "manual";
+      if (currentSignal.aborted && started) result.interrupted = true;
       result.state = currentSignal.aborted
         ? "cancelled"
         : unanswered
@@ -216,10 +304,17 @@ export async function runChecks(
   }
   publish();
   try {
+    if (options.prepare) await options.prepare(signal);
     for (let index = 0; index < plan.length; index++) {
       if (signal.aborted || cleanupFailed) break;
+      if (!unfinished(report.checks[index])) continue;
       await execute(plan[index], index, signal);
     }
+  } catch (error) {
+    report.resumeError =
+      error instanceof Error
+        ? error.message
+        : "Не удалось восстановить подключение";
   } finally {
     // Cleanup is independent of cancellation and always bounded.
     await execute(cleanup, plan.length, new AbortController().signal);
@@ -230,7 +325,12 @@ export async function runChecks(
           ? "Не запускалась: состояние приложения не восстановлено"
           : "Не запускалась: прогон остановлен";
       }
-    report.state = signal.aborted || cleanupFailed ? "cancelled" : "finished";
+    report.resumeBlocked =
+      cleanupFailed || report.checks[plan.length].state === "failed";
+    report.state =
+      signal.aborted || cleanupFailed || report.resumeError
+        ? "cancelled"
+        : "finished";
     report.finishedAt = new Date().toISOString();
     publish();
   }

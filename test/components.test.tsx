@@ -333,3 +333,116 @@ test("run report separates confirmed device effects from API responses and expos
     assert.ok(page.getByText("GitHub недоступен. Актуальность не проверена.")),
   );
 });
+
+test("stored consent never authorizes a fresh user's session", async () => {
+  const posts: { path: string; body: unknown }[] = [];
+  const hostCalls: string[] = [];
+  Object.assign(globalThis, {
+    LO: {
+      MiniAppNative: {
+        protocolVersion: 1,
+        generation: "fixture:document",
+        operations: [],
+        capabilities: [],
+        launchData: new URLSearchParams({
+          app_id: "demo",
+          user: JSON.stringify({ id: "202" }),
+          auth_date: String(Math.floor(Date.now() / 1000)),
+        }).toString(),
+        snapshot: () => ({ colorScheme: "light" }),
+        subscribe: () => () => {},
+        postMessage: (raw: string) => {
+          hostCalls.push((JSON.parse(raw) as { operation: string }).operation);
+        },
+      },
+    },
+  });
+  localStorage.setItem(
+    "sdk-test.pending-consent",
+    JSON.stringify({ appId: "demo", allowed: true }),
+  );
+  globalThis.fetch = async (input, options) => {
+    const path = String(input);
+    if (path.endsWith("/status"))
+      return Response.json({ appConfigured: true, botConfigured: true });
+    if (options?.method === "POST")
+      posts.push({ path, body: JSON.parse(String(options.body)) });
+    if (path.endsWith("/session"))
+      return Response.json({ verified: true, appId: "demo", userId: "202" });
+    return Response.json({}, { status: 503 });
+  };
+  try {
+    const page = render(<App />);
+    fireEvent.click(page.getByRole("button", { name: "Вручную" }));
+    fireEvent.click(page.getByRole("button", { name: "Данные запуска" }));
+    await waitFor(() =>
+      assert.equal(
+        (
+          page.getByRole("button", {
+            name: "Проверить подпись",
+          }) as HTMLButtonElement
+        ).disabled,
+        false,
+      ),
+    );
+    fireEvent.click(page.getByRole("button", { name: "Проверить подпись" }));
+    await waitFor(() =>
+      assert.equal(
+        posts.filter((post) => post.path.endsWith("/session")).length,
+        1,
+      ),
+    );
+    assert.equal(
+      posts.filter((post) => post.path.endsWith("/consent")).length,
+      0,
+    );
+    assert.equal(hostCalls.includes("requestWriteAccess"), false);
+  } finally {
+    cleanup();
+    Reflect.deleteProperty(globalThis, "LO");
+  }
+});
+
+test("a stopped guided run reopens with Continue, preserves completed rows and can stop again", async () => {
+  globalThis.fetch = async (input) =>
+    String(input).endsWith("/status")
+      ? Response.json({ appConfigured: true, botConfigured: false })
+      : Response.json({}, { status: 503 });
+  let page = render(<App />);
+  fireEvent.click(page.getByRole("button", { name: "Проверить все мосты" }));
+  await waitFor(() => assert.ok(page.getByText("Звук")));
+  fireEvent.click(page.getByRole("button", { name: "Остановить проверку" }));
+  await waitFor(() =>
+    assert.ok(page.getByRole("button", { name: "Продолжить проверку" })),
+  );
+  const before = JSON.parse(localStorage.getItem("sdk-test.last-run")!)
+    .report as import("../web/runner.ts").RunReport;
+  assert.equal(before.state, "cancelled");
+  const first = before.checks.find((check) => check.id === "server")!;
+  assert.equal(first.state, "passed");
+  page.unmount();
+  page = render(<App />);
+  assert.ok(page.getByRole("button", { name: "Начать заново" }));
+  fireEvent.click(page.getByRole("button", { name: "Продолжить проверку" }));
+  await waitFor(() => assert.ok(page.getByText("Звук")));
+  const resumed = JSON.parse(localStorage.getItem("sdk-test.last-run")!)
+    .report as import("../web/runner.ts").RunReport;
+  assert.equal(resumed.id, before.id);
+  assert.equal(resumed.startedAt, before.startedAt);
+  assert.deepEqual(
+    resumed.checks.find((check) => check.id === "server"),
+    first,
+  );
+  assert.equal(
+    resumed.checks.find((check) => check.id === "audio-playback")?.state,
+    "running",
+  );
+  assert.equal(
+    page.queryByRole("button", { name: "Продолжить проверку" }),
+    null,
+  );
+  fireEvent.click(page.getByRole("button", { name: "Остановить проверку" }));
+  await waitFor(() =>
+    assert.ok(page.getByRole("button", { name: "Продолжить проверку" })),
+  );
+});

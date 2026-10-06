@@ -135,6 +135,7 @@ export function createHandler(configuration = process.env, dependencies = {}) {
     (configuration.LO_TEST_USER_IDS ?? "").split(",").filter(Boolean),
   );
   const sessions = new Map();
+  const budgets = new Map();
   const reports = new Map();
   let polling = false;
   const client = botConfigured
@@ -154,17 +155,23 @@ export function createHandler(configuration = process.env, dependencies = {}) {
     });
     response.end(JSON.stringify(body));
   };
-  function session(request) {
+  function findSession(request) {
     const id = request.headers.cookie
       ?.split(";")
       .map((value) => value.trim())
       .find((value) => value.startsWith("sdk_test="))
       ?.slice(9);
     const value = sessions.get(id);
-    if (!value || value.expires < now()) {
+    if (!value || value.expires <= now()) {
       if (id) sessions.delete(id);
-      throw new RequestError(401, "Сначала проверьте подпись запуска");
+      return null;
     }
+    return value;
+  }
+  function session(request) {
+    const value = findSession(request);
+    if (!value)
+      throw new RequestError(401, "Сначала проверьте подпись запуска");
     return value;
   }
   const markup = () => ({
@@ -264,17 +271,58 @@ export function createHandler(configuration = process.env, dependencies = {}) {
               );
             verifiers.push("Go HMAC");
           }
+          if (
+            (body.runId !== undefined &&
+              (typeof body.runId !== "string" ||
+                !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+                  body.runId,
+                ))) ||
+            (body.resume !== undefined && typeof body.resume !== "boolean") ||
+            (body.resume && !body.runId)
+          )
+            throw new RequestError(400, "Некорректный идентификатор прогона");
+          const presented = body.resume ? findSession(request) : null;
+          const previous =
+            presented?.userId === launch.user.id &&
+            presented.runId === body.runId
+              ? presented
+              : null;
+          if (previous)
+            for (const [id, value] of sessions)
+              if (value === previous) sessions.delete(id);
           for (const [id, value] of sessions)
-            if (value.expires < now()) sessions.delete(id);
+            if (value.expires <= now()) sessions.delete(id);
           if (sessions.size >= 500)
             throw new RequestError(429, "Слишком много тестовых сессий");
+          for (const [userId, budget] of budgets)
+            if (budget.expires <= now() && now() - budget.lastSend >= 2)
+              budgets.delete(userId);
+          const expires = Math.min(now() + 3600, launch.authDate + 3600);
+          let budget = budgets.get(launch.user.id);
+          if (!budget) {
+            if (budgets.size >= 1000)
+              throw new RequestError(
+                429,
+                "Слишком много тестовых пользователей",
+              );
+            budget = { expires, lastSend: -Infinity };
+            budgets.set(launch.user.id, budget);
+          } else budget.expires = Math.max(budget.expires, expires);
           const id = randomBytes(32).toString("base64url");
           sessions.set(id, {
             userId: launch.user.id,
-            expires: Math.min(now() + 3600, launch.authDate + 3600),
+            expires,
             allowed: false,
-            files: {},
-            lastSend: -Infinity,
+            runId: body.runId,
+            files: { ...previous?.files },
+            ...(previous?.messageId ? { messageId: previous.messageId } : {}),
+            ...(previous?.fileMetadata
+              ? { fileMetadata: previous.fileMetadata }
+              : {}),
+            ...(previous?.documentDigest
+              ? { documentDigest: previous.documentDigest }
+              : {}),
+            budget,
           });
           response.setHeader(
             "set-cookie",
@@ -286,6 +334,11 @@ export function createHandler(configuration = process.env, dependencies = {}) {
             verifiers,
             userId: launch.user.id,
             appId: launch.appId,
+            resources: {
+              message: Boolean(previous?.messageId),
+              files: Object.keys(previous?.files ?? {}),
+              metadata: Boolean(previous?.fileMetadata),
+            },
           });
           return;
         }
@@ -316,12 +369,12 @@ export function createHandler(configuration = process.env, dependencies = {}) {
             );
           if (polling)
             throw new RequestError(409, "Проверка обновлений уже выполняется");
-          if (now() - current.lastSend < 2)
+          if (now() - current.budget.lastSend < 2)
             throw new RequestError(
               429,
               "Дождитесь 2 секунд между тестами бота",
             );
-          current.lastSend = now();
+          current.budget.lastSend = now();
           polling = true;
           try {
             // Read only: no offset advancement, no messages sent, no foreign data returned.
@@ -393,8 +446,7 @@ export function createHandler(configuration = process.env, dependencies = {}) {
         }
         if (url.pathname === "/api/bot") {
           // Public deterministic conformance uses a tiny body and no credentials.
-          const isAuthenticated = request.headers.cookie?.includes("sdk_test=");
-          const current = isAuthenticated ? session(request) : null;
+          const current = findSession(request);
           activeSession = current;
           const body = await readJson(request, current ? 72 << 20 : 1024);
           if (body?.operation === "conformance") {
@@ -422,12 +474,12 @@ export function createHandler(configuration = process.env, dependencies = {}) {
             !current.allowed
           )
             throw new RequestError(403, "Сначала разрешите боту сообщения");
-          if (now() - current.lastSend < 2)
+          if (now() - current.budget.lastSend < 2)
             throw new RequestError(
               429,
               "Дождитесь 2 секунд между тестами бота",
             );
-          current.lastSend = now();
+          current.budget.lastSend = now();
           const conversationId = current.userId;
           let result;
           if (operation === "getIdentity") result = await client.getIdentity();

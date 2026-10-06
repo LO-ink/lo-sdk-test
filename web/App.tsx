@@ -12,6 +12,8 @@ import { applyPalette } from "./theme.ts";
 import { RunPage } from "./RunPage.tsx";
 import {
   bounded,
+  canResume,
+  matchesPlan,
   bridgeCoverage,
   runChecks,
   summarize,
@@ -40,6 +42,9 @@ import {
   verifyDeferredData,
   type DeferredTicket,
 } from "./deferred.ts";
+
+import { dependencyKey, readRun, saveRun, sameOwner } from "./run-storage.ts";
+const dependencies = dependencyKey(sdkBuild.packages);
 
 type Result = {
   state: "running" | "done" | "denied" | "failed";
@@ -133,35 +138,13 @@ export function App() {
   const audio = useRef<AudioContext | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const reportDialog = useRef<HTMLDialogElement>(null);
-  const [automatedRun, setAutomatedRun] = useState<RunReport | null>(() => {
-    try {
-      const saved = JSON.parse(
-        localStorage.getItem("sdk-test.last-run") ?? "null",
-      );
-      if (
-        saved?.appVersion !== appVersion ||
-        !Array.isArray(saved.report?.checks) ||
-        !Number.isFinite(Date.parse(saved.report.startedAt)) ||
-        Date.now() - Date.parse(saved.report.startedAt) > 86400000
-      )
-        return null;
-      const report = saved.report as RunReport;
-      if (report.state === "running") {
-        report.state = "cancelled";
-        for (const item of report.checks)
-          if (item.state === "running" || item.state === "pending") {
-            item.state = "cancelled";
-            item.detail = "Приложение было закрыто до завершения прогона";
-          }
-      }
-      return report;
-    } catch {
-      return null;
-    }
-  });
+  const [automatedRun, setAutomatedRun] = useState<RunReport | null>(() =>
+    readRun(localStorage, dependencies),
+  );
   const automatedRunRef = useRef(automatedRun);
   automatedRunRef.current = automatedRun;
   const includeBot = true;
+  const [resumingRun, setResumingRun] = useState(false);
   const [startingRun, setStartingRun] = useState(false);
   const [stoppingRun, setStoppingRun] = useState(false);
   const runController = useRef<AbortController | null>(null);
@@ -183,6 +166,7 @@ export function App() {
         ticket,
         result,
         appVersion,
+        dependencies,
         clientRef.current ? deferredIdentity(clientRef.current) : null,
       );
       if (report !== automatedRunRef.current) {
@@ -321,10 +305,7 @@ export function App() {
       return;
     }
     try {
-      localStorage.setItem(
-        "sdk-test.last-run",
-        JSON.stringify({ appVersion, report: automatedRun }),
-      );
+      saveRun(localStorage, automatedRun, appVersion, dependencies);
       localStorage.setItem(deferredKey, JSON.stringify(ticket));
     } catch {
       dispose();
@@ -385,7 +366,7 @@ export function App() {
       });
   };
   const runningAll = startingRun || automatedRun?.state === "running";
-  const startAll = async () => {
+  const startAll = async (resume = false) => {
     if (
       runController.current ||
       deferredBusy.current ||
@@ -394,8 +375,38 @@ export function App() {
       Object.values(results).some((r) => r.state === "running")
     )
       return;
+    if (
+      !resume &&
+      automatedRunRef.current?.resumeBlocked &&
+      Object.values(automatedRunRef.current.recovery ?? {}).some(
+        (entry) => entry.written.length || entry.mutations.length,
+      )
+    ) {
+      setExportMessage(
+        "Сначала восстановите состояние прежнего прогона кнопкой продолжения. Новый запуск не должен потерять незавершённую очистку.",
+      );
+      return;
+    }
+    const previous = resume ? automatedRunRef.current : null;
+    if (resume && !canResume(previous)) return;
+    const bridges = availableBridges();
+    const primary = bridges.find((bridge) => bridge.client) ?? bridges[0];
+    const runClient = primary.client;
+    const runOwner = runClient
+      ? (deferredIdentity(runClient) ?? undefined)
+      : undefined;
+    if (previous && !sameOwner(previous, runOwner)) {
+      setExportMessage(
+        "Этот прогон относится к другому пользователю или приложению. Откройте его в прежнем аккаунте LO либо начните новый.",
+      );
+      return;
+    }
+    const runId = previous?.id ?? crypto.randomUUID();
     const controller = new AbortController();
     runController.current = controller;
+    setResumingRun(resume);
+    setConsent(null);
+    setExportMessage("");
     try {
       localStorage.removeItem(deferredKey);
     } catch {
@@ -403,12 +414,6 @@ export function App() {
     }
     runEvents.current = {};
     const audioStarted = beginAudio(audio.current);
-    const bridges = availableBridges();
-    const primary = bridges.find((bridge) => bridge.client) ?? bridges[0];
-    const runClient = primary.client;
-    const runOwner = runClient
-      ? (deferredIdentity(runClient) ?? undefined)
-      : undefined;
     const writeAccess =
       includeBot &&
       configuration?.botConfigured !== false &&
@@ -440,7 +445,7 @@ export function App() {
       }
     const common = {
       api,
-      consent,
+      consent: null,
       includeBot,
       interact,
       audioStarted,
@@ -467,14 +472,6 @@ export function App() {
       },
       consentChanged: (allowed: boolean) => {
         if (mounted.current) setConsent(allowed);
-        try {
-          localStorage.setItem(
-            "sdk-test.pending-consent",
-            JSON.stringify({ appId: client?.launchUnsafe()?.appId, allowed }),
-          );
-        } catch {
-          /* The run can proceed without local persistence. */
-        }
       },
       verified: () => {
         if (mounted.current) setAuthenticated(true);
@@ -485,12 +482,55 @@ export function App() {
     const themes = systemThemeChecks(bridges, interact);
     const plan: Check[] = [];
     const cleanups: Check[] = [];
+    const suites = new Map<string, ReturnType<typeof createSuite>>();
+    const publishReport = (update: RunReport) => {
+      const report = {
+        ...update,
+        owner: runOwner,
+        recovery: Object.fromEntries(
+          [...suites].map(([id, suite]) => [id, suite.checkpoint()]),
+        ),
+      };
+      latestReport = report;
+      if (!mounted.current) return;
+      automatedRunRef.current = report;
+      setAutomatedRun(report);
+      try {
+        saveRun(localStorage, report, appVersion, dependencies);
+      } catch {
+        /* The live report remains available. */
+      }
+      setStartingRun(false);
+    };
     for (const bridge of [
       primary,
       ...bridges.filter((item) => item !== primary),
     ]) {
       const suite = createSuite({
         ...common,
+        runId,
+        bridgeId: bridge.id,
+        primary: bridge === primary,
+        resumeChecks: previous?.checks
+          .filter(
+            (check) =>
+              check.bridge === bridge.label ||
+              (bridge === primary && !check.bridge),
+          )
+          .map((check) => ({
+            ...check,
+            id: check.id.startsWith(`${bridge.id}:`)
+              ? check.id.slice(bridge.id.length + 1)
+              : check.id,
+          })),
+        recovery:
+          previous?.checks.find((check) => check.id === "cleanup")?.state !==
+          "passed"
+            ? previous?.recovery?.[bridge.id]
+            : undefined,
+        checkpoint: () => {
+          if (latestReport) publishReport(latestReport);
+        },
         client: bridge.client,
         panelExpanded: bridge.panelExpanded,
         observed: () => observed.get(bridge.id)!,
@@ -499,6 +539,7 @@ export function App() {
           ? (name, input) => bridge.native!.nativeSupports(name, input as never)
           : undefined,
       });
+      suites.set(bridge.id, suite);
       for (const check of suite.plan) {
         const host =
           operationNames.includes(check.id as MiniAppOperation) ||
@@ -563,23 +604,29 @@ export function App() {
       },
     };
     try {
-      await runChecks(plan, cleanup, controller.signal, (update) => {
-        const report = { ...update, owner: runOwner };
-        latestReport = report;
-        if (mounted.current) {
-          automatedRunRef.current = report;
-          setAutomatedRun(report);
-          try {
-            localStorage.setItem(
-              "sdk-test.last-run",
-              JSON.stringify({ appVersion, report }),
-            );
-          } catch {
-            /* Live report stays available. */
-          }
-          setStartingRun(false);
-        }
+      if (previous && !matchesPlan(previous, [...plan, cleanup]))
+        throw new Error(
+          "Набор проверок изменился. Сохранённый отчёт доступен; начните новый прогон.",
+        );
+      await runChecks(plan, cleanup, controller.signal, publishReport, 12000, {
+        id: runId,
+        ...(previous
+          ? {
+              previous,
+              prepare: async (signal) => {
+                for (const suite of suites.values())
+                  await suite.prepareResume(signal);
+              },
+            }
+          : {}),
       });
+    } catch (error) {
+      if (mounted.current)
+        setExportMessage(
+          error instanceof Error
+            ? error.message
+            : "Не удалось запустить проверку",
+        );
     } finally {
       for (const release of subscriptions) release();
       testingAppearance.current = false;
@@ -589,6 +636,7 @@ export function App() {
       if (mounted.current) {
         setStartingRun(false);
         setStoppingRun(false);
+        setResumingRun(false);
       }
     }
   };
@@ -843,14 +891,6 @@ export function App() {
       complete(name, value, value === false ? "denied" : "done");
       if (name === "requestWriteAccess") {
         setConsent(value as boolean);
-        try {
-          localStorage.setItem(
-            "sdk-test.pending-consent",
-            JSON.stringify({ appId: launch?.appId, allowed: value }),
-          );
-        } catch {
-          /* In-memory retry stays available. */
-        }
         if (authenticated) await saveConsent(value as boolean);
       }
     } catch (error) {
@@ -867,7 +907,6 @@ export function App() {
     if (allowed === null) return;
     try {
       await api("consent", { allowed });
-      localStorage.removeItem("sdk-test.pending-consent");
       setBackendMessage("Ответ о согласии принят сервером");
     } catch {
       setBackendMessage(
@@ -881,20 +920,7 @@ export function App() {
       const result = await api("session", { raw: client.adapter.launchData });
       setAuthenticated(true);
       complete("verifyInitData", result);
-      try {
-        const pending = JSON.parse(
-          localStorage.getItem("sdk-test.pending-consent") ?? "null",
-        );
-        if (
-          pending?.appId === launch?.appId &&
-          typeof pending.allowed === "boolean"
-        ) {
-          setConsent(pending.allowed);
-          await saveConsent(pending.allowed);
-        }
-      } catch {
-        /* Broken local state does not authorize sends. */
-      }
+      setConsent(null);
     } catch (error) {
       complete(
         "verifyInitData",
@@ -1106,6 +1132,8 @@ export function App() {
             stopping={stoppingRun}
             exporting={exporting}
             onStart={() => void startAll()}
+            onResume={() => void startAll(true)}
+            resuming={resumingRun}
             onStop={() => {
               setStoppingRun(Boolean(runController.current));
               runController.current?.abort();
