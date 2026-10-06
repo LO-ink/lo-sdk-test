@@ -1,11 +1,11 @@
 import {
   createBotClient,
+  createLoHttpBotTransport,
   RateLimited,
   NotAllowed,
   BadRequest,
   Unavailable,
 } from "@lo-ink/bot-sdk";
-import { createLoHttpBotTransport } from "@lo-ink/bot-http-lo";
 
 /** Deliberately synthetic API errors; never sends or floods the real platform. */
 export async function conformance() {

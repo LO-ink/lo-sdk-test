@@ -10,12 +10,17 @@ const item = (name, repository = "lo-platform-adapters") => ({
     repository === "lo-bot-sdk"
       ? "@lo-ink/bot-sdk"
       : name === "two"
-        ? "@lo-ink/bot-http-lo"
+        ? "@lo-ink/adapter-lo-legacy"
         : "@lo-ink/adapter-webapp-compat",
   repository,
   version: "0.3.0",
   sourceCommit: source,
 });
+const sharedBuildPaths = [
+  "scripts/build-package.mjs",
+  "package.json",
+  "package-lock.json",
+];
 const tree = (changed = false) => ({
   truncated: false,
   tree: [
@@ -26,11 +31,17 @@ const tree = (changed = false) => ({
       sha: changed ? latest : source,
     },
     {
-      path: "packages/bot-http-lo",
+      path: "packages/lo-legacy",
       type: "tree",
       mode: "040000",
       sha: changed ? latest : source,
     },
+    ...sharedBuildPaths.map((path) => ({
+      path,
+      type: "blob",
+      mode: "100644",
+      sha: source,
+    })),
   ],
 });
 const response = (body, status = 200) =>
@@ -130,7 +141,10 @@ test("unrelated monorepo changes do not mark unchanged package trees as updates"
   assert.equal(result.comparison, "package-sources");
   assert.deepEqual(
     result.packages.map((p) => p.comparedPaths),
-    [["packages/compat"], ["packages/bot-http-lo"]],
+    [
+      ["packages/compat", ...sharedBuildPaths],
+      ["packages/lo-legacy", ...sharedBuildPaths],
+    ],
   );
   assert.equal(
     urls.length,
@@ -217,6 +231,30 @@ test("JS SDK freshness excludes Go and workflow edits but includes current build
       ["go", ".github/workflows/ci.yml"].includes(changedPath)
         ? "current"
         : "update",
+      changedPath,
+    );
+  }
+});
+
+test("monorepo compiler and clean-build changes invalidate both dependent package scopes", async () => {
+  for (const changedPath of sharedBuildPaths) {
+    const check = createVersionChecker({
+      loadBuild: async () => ({ packages: [item("one"), item("two")] }),
+      fetch: async (url) => {
+        if (url.includes("/git/trees/")) {
+          const body = tree();
+          if (url.includes(latest))
+            body.tree.find((entry) => entry.path === changedPath).sha = latest;
+          return response(body);
+        }
+        return response(
+          url.includes("/compare/") ? { status: "ahead" } : { sha: latest },
+        );
+      },
+    });
+    assert.deepEqual(
+      (await check()).packages.map((entry) => entry.state),
+      ["update", "update"],
       changedPath,
     );
   }
@@ -316,6 +354,7 @@ test("UI freshness checks its package and shared build config independently of i
     "LICENSE",
     "package.json",
     "package-lock.json",
+    "scripts/build-package.mjs",
     ".github/workflows/ci.yml",
   ]) {
     const check = createVersionChecker({
@@ -337,6 +376,7 @@ test("UI freshness checks its package and shared build config independently of i
               "LICENSE",
               "package.json",
               "package-lock.json",
+              "scripts/build-package.mjs",
               ".github/workflows/ci.yml",
             ].map((path) => ({
               path,
@@ -357,9 +397,7 @@ test("UI freshness checks its package and shared build config independently of i
         ? ["update", "current"]
         : changedPath === "packages/design-tokens"
           ? ["current", "update"]
-          : ["LICENSE", "package.json", "package-lock.json"].includes(
-                changedPath,
-              )
+          : ["LICENSE", ...sharedBuildPaths].includes(changedPath)
             ? ["update", "update"]
             : ["current", "current"],
     );

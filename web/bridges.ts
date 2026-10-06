@@ -1,9 +1,11 @@
-import { createMiniAppClient, type MiniAppClient } from "@lo-ink/miniapp-sdk";
 import {
-  createAdapter,
+  createMiniAppClient,
   createNativeAdapter,
-  type LoGlobal,
-} from "@lo-ink/adapter-lo-legacy";
+  type MiniAppClient,
+  type LoNativeGlobal,
+} from "@lo-ink/miniapp-sdk";
+import { createAdapter, type LoLegacyGlobal } from "@lo-ink/adapter-lo-legacy";
+type LoGlobal = LoNativeGlobal & LoLegacyGlobal;
 export type Bridge = {
   id: string;
   label: string;

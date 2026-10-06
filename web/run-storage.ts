@@ -17,18 +17,6 @@ const states = new Set([
 ]);
 const evidence = new Set(["response", "data", "device", "synthetic"]);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const legacyDependencies =
-  "@lo-ink/adapter-lo@0.23.3|@lo-ink/adapter-lo-legacy@0.2.0|@lo-ink/adapter-webapp-compat@0.20.0|@lo-ink/bot-http-lo@0.5.1|@lo-ink/bot-sdk@0.4.4|@lo-ink/design-tokens@0.1.1|@lo-ink/miniapp-sdk@0.21.1|@lo-ink/ui@0.1.1"
-    .split("|")
-    .sort()
-    .join("|");
-// This reviewed UI-only upgrade leaves the execution suite and bridge packages unchanged.
-const uiUpgradeDependencies = legacyDependencies
-  .replace("@lo-ink/design-tokens@0.1.1", "@lo-ink/design-tokens@0.2.0")
-  .replace("@lo-ink/ui@0.1.1", "@lo-ink/ui@0.2.0");
-const uiPatchDependencies = uiUpgradeDependencies
-  .replace("@lo-ink/ui@0.2.0", "@lo-ink/ui@0.3.0")
-  .replace("@lo-ink/design-tokens@0.2.0", "@lo-ink/design-tokens@0.3.0");
 export function dependencyKey(
   packages: ReadonlyArray<{ name: string; version: string }>,
 ): string {
@@ -121,25 +109,7 @@ export function readRun(
     if (!raw || raw.length > 2000000) return null;
     const saved: unknown = JSON.parse(raw);
     if (!object(saved) || !object(saved.report)) return null;
-    const legacy =
-      saved.schema === undefined &&
-      saved.appVersion === "0.4.21" &&
-      [legacyDependencies, uiUpgradeDependencies, uiPatchDependencies].includes(
-        dependencies,
-      );
-    const reviewedUiUpgrade =
-      (saved.appVersion === "0.4.22" &&
-        saved.dependencies === legacyDependencies &&
-        [uiUpgradeDependencies, uiPatchDependencies].includes(dependencies)) ||
-      (saved.appVersion === "0.4.23" &&
-        saved.dependencies === uiUpgradeDependencies &&
-        dependencies === uiPatchDependencies);
-    if (
-      !legacy &&
-      (saved.schema !== 1 ||
-        (saved.dependencies !== dependencies && !reviewedUiUpgrade))
-    )
-      return null;
+    if (saved.schema !== 1 || saved.dependencies !== dependencies) return null;
     const report = saved.report;
     if (
       !text(report.id, 36) ||
@@ -191,18 +161,11 @@ export function readRun(
         }
       }
     }
-    if (legacy)
-      for (const check of restored.checks)
-        if (
-          check.state === "cancelled" &&
-          !check.detail.startsWith("Не запускалась:")
-        )
-          check.interrupted = true;
     const cleaned = restored.checks.some(
       (check) => check.id === "cleanup" && check.state === "passed",
     );
     if (
-      (!cleaned && (legacy || !restored.recovery)) ||
+      (!cleaned && !restored.recovery) ||
       restored.checks.some(
         (check) => check.id === "cleanup" && check.state === "failed",
       )

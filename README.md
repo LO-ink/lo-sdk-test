@@ -6,7 +6,7 @@ Run the guided checks to see progress, respond to permissions and confirmations,
 
 A stopped run offers Continue and a separate Start over action. Completed results, run identity and progress stay intact, including after reopening. Continuation verifies a fresh session and requests fresh bot consent; it never restores permission from browser storage. Run-owned cleanup state is saved before mutations so interrupted storage and screen changes can be restored before continuing. An unresolved restoration is shown explicitly and cannot be discarded by starting another run.
 
-Progress is retained for 24 hours and is bound to the SDK dependency set, the exact check plan and the same LO app/user. Interrupted bot writes require a specific retry choice because a lost response does not prove that no message was sent. Missing server-owned file/message references remain unverified instead of repeating completed sends. A compatible, cleanly stopped 0.4.21 report can be continued. The reviewed UI-only 0.4.22 → 0.4.23/0.4.24 and 0.4.23 → 0.4.24 upgrades also preserve reports because the bridge packages and check plan are unchanged; other dependency changes still reject continuation. Deferred delivery tickets remain bound to their original build.
+Progress is retained for 24 hours and is bound to the SDK dependency set, the exact check plan and the same LO app/user. Interrupted bot writes require a specific retry choice because a lost response does not prove that no message was sent. Missing server-owned file/message references remain unverified instead of repeating completed sends. Reports from a different SDK dependency set require a fresh run. Deferred delivery tickets remain bound to their original build.
 
 Native and compatibility bridges are tested independently. The report records platform limitations.
 
@@ -96,3 +96,13 @@ for report disclosures, tables, file timestamps and page structure.
 
 The [dedicated Secretary flow](docs/secretary.md) verifies owner-scoped incoming,
 review draft and server sending evidence without sharing a working bot consumer.
+
+Native LO uses `createLoClient` from Mini App SDK 0.22 and the HTTP transport
+from Bot SDK 0.5. The application has no dependency on native compatibility
+re-export packages. The separately selected WebApp compatibility bridge retains
+its explicit adapters. Resume remains scoped to the recorded bridge/dependency
+set; native SDK version changes do not relabel old results as newly tested.
+
+The architecture gate parses application CSS and rejects direct typography,
+control appearance and shared SDK selector overrides. Layout, host tokens and
+tabular report numbers remain application responsibilities.

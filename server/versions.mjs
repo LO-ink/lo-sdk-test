@@ -9,34 +9,26 @@ const rootPackagePaths = [
   "README.md",
   "LICENSE",
 ];
+const monorepoBuildPaths = [
+  "scripts/build-package.mjs",
+  "package.json",
+  "package-lock.json",
+];
 const packageSources = new Map([
   ["@lo-ink/miniapp-sdk", ["lo-miniapp-sdk", rootPackagePaths]],
   ["@lo-ink/bot-sdk", ["lo-bot-sdk", rootPackagePaths]],
-  ["@lo-ink/adapter-lo", ["lo-platform-adapters", ["packages/lo"]]],
   [
     "@lo-ink/adapter-lo-legacy",
-    ["lo-platform-adapters", ["packages/lo-legacy"]],
+    ["lo-platform-adapters", ["packages/lo-legacy", ...monorepoBuildPaths]],
   ],
   [
     "@lo-ink/adapter-webapp-compat",
-    ["lo-platform-adapters", ["packages/compat"]],
+    ["lo-platform-adapters", ["packages/compat", ...monorepoBuildPaths]],
   ],
-  ["@lo-ink/bot-http-lo", ["lo-platform-adapters", ["packages/bot-http-lo"]]],
-  [
-    "@lo-ink/ui",
-    ["lo-ui", ["packages/ui", "LICENSE", "package.json", "package-lock.json"]],
-  ],
+  ["@lo-ink/ui", ["lo-ui", ["packages/ui", "LICENSE", ...monorepoBuildPaths]]],
   [
     "@lo-ink/design-tokens",
-    [
-      "lo-ui",
-      [
-        "packages/design-tokens",
-        "LICENSE",
-        "package.json",
-        "package-lock.json",
-      ],
-    ],
+    ["lo-ui", ["packages/design-tokens", "LICENSE", ...monorepoBuildPaths]],
   ],
 ]);
 const sha = /^[a-f0-9]{40}$/;
