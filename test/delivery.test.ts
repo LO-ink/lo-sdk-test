@@ -138,6 +138,7 @@ test("real runner finishes and restores before delivery inspection; reopening co
     ticket,
     success,
     version,
+    "fixture-dependencies",
     owner,
     101,
   )!;
@@ -191,6 +192,7 @@ test("legacy, interrupted, unrestored, incomplete and foreign-owner runs cannot 
         ticket,
         success,
         version,
+        "fixture-dependencies",
         owner,
         101,
       ),
@@ -224,6 +226,7 @@ test("delivery completion rechecks current account, build, age, run and attempt 
         ticket,
         success,
         version,
+        "fixture-dependencies",
         identity,
         101,
       ),
@@ -237,6 +240,7 @@ test("delivery completion rechecks current account, build, age, run and attempt 
       ticket,
       success,
       "new-build",
+      "fixture-dependencies",
       owner,
       101,
     ),
@@ -249,6 +253,7 @@ test("delivery completion rechecks current account, build, age, run and attempt 
       ticket,
       success,
       version,
+      "fixture-dependencies",
       owner,
       86400101,
     ),
@@ -256,7 +261,16 @@ test("delivery completion rechecks current account, build, age, run and attempt 
   );
   const newer = finished();
   assert.equal(
-    persistDeferredResult(store, newer, ticket, success, version, owner, 101),
+    persistDeferredResult(
+      store,
+      newer,
+      ticket,
+      success,
+      version,
+      "fixture-dependencies",
+      owner,
+      101,
+    ),
     newer,
   );
   const replacement = createDeferredTicket(
@@ -268,7 +282,16 @@ test("delivery completion rechecks current account, build, age, run and attempt 
   );
   store.setItem(deferredKey, JSON.stringify(replacement));
   assert.equal(
-    persistDeferredResult(store, report, ticket, success, version, owner, 102),
+    persistDeferredResult(
+      store,
+      report,
+      ticket,
+      success,
+      version,
+      "fixture-dependencies",
+      owner,
+      102,
+    ),
     report,
   );
   assert.equal(store.getItem(lastRunKey), null);
@@ -302,6 +325,7 @@ test("failed durable confirmation preserves pending delivery; retry commits befo
         ticket,
         success,
         version,
+        "fixture-dependencies",
         owner,
         101,
       ),
@@ -326,6 +350,7 @@ test("failed durable confirmation preserves pending delivery; retry commits befo
     ticket,
     success,
     version,
+    "fixture-dependencies",
     owner,
     103,
   )!;
@@ -342,6 +367,7 @@ test("failed durable confirmation preserves pending delivery; retry commits befo
       ticket,
       { state: "failed", detail: "late rejection" },
       version,
+      "fixture-dependencies",
       owner,
       104,
     ),
@@ -367,6 +393,7 @@ test("declining or skipping inspection never becomes confirmed delivery", () => 
       ticket,
       { state, detail: "not confirmed" },
       version,
+      "fixture-dependencies",
       owner,
       101,
     )!;
@@ -436,6 +463,7 @@ test("leaving a pending inspection cancels its old UI but reopening retains the 
     ticket,
     success,
     version,
+    "fixture-dependencies",
     owner,
     102,
   )!;

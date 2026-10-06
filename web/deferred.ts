@@ -1,8 +1,9 @@
+import { saveRun } from "./run-storage.ts";
 import type { MiniAppClient } from "@lo-ink/miniapp-sdk";
 import type { Check, CheckResult, RunReport } from "./runner.ts";
 
 export const deferredKey = "sdk-test.end-action";
-export const lastRunKey = "sdk-test.last-run";
+export { lastRunKey } from "./run-storage.ts";
 type Storage = Pick<globalThis.Storage, "getItem" | "setItem" | "removeItem">;
 export type DeferredIdentity = { appId: string; userId: string };
 export type DeferredTicket = DeferredIdentity & {
@@ -202,6 +203,7 @@ export function persistDeferredResult(
   ticket: DeferredTicket,
   result: Parameters<typeof applyDeferredResult>[2],
   appVersion: string,
+  dependencies: string,
   identity: DeferredIdentity | null,
   now = Date.now(),
 ): RunReport | null {
@@ -213,13 +215,10 @@ export function persistDeferredResult(
   )
     return report;
   const updated = applyDeferredResult(report, ticket, result);
-  if (updated === report) return report;
+  if (!updated || updated === report) return report;
   // Persist the confirmation before retiring its ticket. A failed write must
   // leave the original pending attempt available after reopening.
-  storage.setItem(
-    lastRunKey,
-    JSON.stringify({ appVersion: ticket.appVersion, report: updated }),
-  );
+  saveRun(storage, updated, ticket.appVersion, dependencies);
   try {
     clearDeferredTicket(storage, ticket);
   } catch {

@@ -1,11 +1,25 @@
 import type { MiniAppClient, MiniAppOperation } from "@lo-ink/miniapp-sdk";
 import { cases, events, operationNames } from "./cases.ts";
-import { bounded, pause, type Check } from "./runner.ts";
+import {
+  bounded,
+  pause,
+  recoveryOperations,
+  unfinished,
+  type Check,
+  type CheckResult,
+  type Recovery,
+} from "./runner.ts";
 import type { WriteAccessResult } from "./consent.ts";
 import type { Interact } from "./interaction.ts";
 import type { AudioStart } from "./audio.ts";
 import { deferredOperations, guidedBridgeCheck } from "./bridge-checks.ts";
 export type SuiteContext = {
+  primary?: boolean;
+  runId?: string;
+  bridgeId?: string;
+  resumeChecks?: CheckResult[];
+  recovery?: Recovery;
+  checkpoint?: () => void;
   client: MiniAppClient | null;
   api: <T>(path: string, body: unknown, signal: AbortSignal) => Promise<T>;
   consent: boolean | null;
@@ -25,7 +39,10 @@ export type SuiteContext = {
 export function createSuite(context: SuiteContext) {
   const { client } = context;
   const plan: Check[] = [];
-  const key = `lo-sdk-run-${crypto.randomUUID()}`;
+  const key =
+    context.runId && context.bridgeId
+      ? `lo-sdk-run-${context.runId}-${context.bridgeId}`
+      : `lo-sdk-run-${crypto.randomUUID()}`;
   const value = "SDK Test roundtrip";
   let signed = false;
   let consent = context.consent;
@@ -34,7 +51,15 @@ export function createSuite(context: SuiteContext) {
   const removed = new Set<string>();
   const passed = new Set<string>();
   const mutations = new Map<MiniAppOperation, number>();
-  const original = client?.adapter.snapshot?.();
+  let original = client?.adapter.snapshot?.();
+  let resources:
+    { message: boolean; files: string[]; metadata: boolean } | undefined;
+  if (context.recovery) {
+    for (const storage of context.recovery.written) written.add(storage);
+    for (const operation of context.recovery.mutations)
+      mutations.set(operation as MiniAppOperation, 1);
+    original = context.recovery.original;
+  }
   let lastBot = 0;
   let lastCloud = 0;
   const call = async (
@@ -94,7 +119,18 @@ export function createSuite(context: SuiteContext) {
         const result = await context.api<{
           verified: boolean;
           verifiers?: string[];
-        }>("session", { raw: client!.adapter.launchData }, signal);
+          resources?: typeof resources;
+        }>(
+          "session",
+          {
+            raw: client!.adapter.launchData,
+            ...(context.runId
+              ? { runId: context.runId, resume: Boolean(context.resumeChecks) }
+              : {}),
+          },
+          signal,
+        );
+        resources = result.resources;
         assert(result.verified === true, "Сервер не подтвердил подпись");
         signed = true;
         context.verified();
@@ -304,12 +340,15 @@ export function createSuite(context: SuiteContext) {
               deferCleanup: (restore) => {
                 finalizer = restore;
               },
-              mutated: (operation) =>
-                mutations.set(operation, (mutations.get(operation) ?? 0) + 1),
+              mutated: (operation) => {
+                mutations.set(operation, (mutations.get(operation) ?? 0) + 1);
+                context.checkpoint?.();
+              },
               mutationRejected: (operation) => {
                 const remaining = (mutations.get(operation) ?? 0) - 1;
                 if (remaining > 0) mutations.set(operation, remaining);
                 else mutations.delete(operation);
+                context.checkpoint?.();
               },
             },
             signal,
@@ -322,6 +361,7 @@ export function createSuite(context: SuiteContext) {
         if (storage) {
           if (/Set$/.test(name)) {
             written.add(storage);
+            context.checkpoint?.();
             input = { key, value };
           } else if (/GetMany$|RemoveMany$/.test(name)) input = { keys: [key] };
           else if (!/Keys$/.test(name)) input = { key };
@@ -596,6 +636,19 @@ export function createSuite(context: SuiteContext) {
                   : operation === "downloadFile"
                     ? "getFile"
                     : null;
+        if (
+          dependency &&
+          !passed.has(`bot:${dependency}`) &&
+          context.resumeChecks?.some(
+            (check) =>
+              check.id === `bot:${dependency}` && check.state === "passed",
+          )
+        )
+          return {
+            state: "manual",
+            detail:
+              "Ресурс прежней тестовой сессии недоступен. Уже выполненные отправки не повторяются; для проверки этого шага начните новый прогон.",
+          };
         if (dependency && !passed.has(`bot:${dependency}`))
           return {
             state: "skipped",
@@ -665,17 +718,26 @@ export function createSuite(context: SuiteContext) {
         };
         let result;
         if (
-          ["setCommands", "getUpdates"].includes(operation) &&
+          (["setCommands", "getUpdates"].includes(operation) ||
+            context.resumeChecks?.some(
+              (check) => check.id === `bot:${operation}` && check.interrupted,
+            )) &&
           context.interact
         ) {
           const answer = await context.interact(
             {
-              title:
-                operation === "setCommands"
+              title: context.resumeChecks?.some(
+                (check) => check.id === `bot:${operation}` && check.interrupted,
+              )
+                ? "Повтор прерванного запроса"
+                : operation === "setCommands"
                   ? "Команда тестового бота"
                   : "Обновления тестового бота",
-              detail:
-                operation === "setCommands"
+              detail: context.resumeChecks?.some(
+                (check) => check.id === `bot:${operation}` && check.interrupted,
+              )
+                ? "Ответ предыдущего запроса не получен. Бот мог уже выполнить действие: повтор может отправить ещё одно сообщение или файл. Повторите запрос только если хотите выполнить его снова."
+                : operation === "setCommands"
                   ? "У тестового бота появится команда /test. Это меняет меню этого бота."
                   : "Будет один запрос без ожидания и без продвижения общего offset; в отчёт чужие сообщения не попадут.",
               action: request,
@@ -769,6 +831,8 @@ export function createSuite(context: SuiteContext) {
             3000,
           );
           assert(removed !== false, "Удаление отклонено");
+          written.delete(storage);
+          context.checkpoint?.();
         } catch {
           errors.push(storage);
         }
@@ -781,6 +845,16 @@ export function createSuite(context: SuiteContext) {
             3000,
           );
           assert(restored !== false, "Восстановление отклонено LO");
+          if (name !== "setButton") {
+            mutations.delete(name);
+            mutations.delete(
+              name.replace(/^stop/, "start") as MiniAppOperation,
+            );
+            if (name === "closeQrScanner") mutations.delete("openQrScanner");
+            if (name === "exitFullscreen")
+              mutations.delete("requestFullscreen");
+            context.checkpoint?.();
+          }
         } catch {
           errors.push(name);
         }
@@ -803,8 +877,33 @@ export function createSuite(context: SuiteContext) {
         await restore("updateBiometryToken", { token: "" });
       if (mutations.has("openQrScanner"))
         await restore("closeQrScanner", undefined);
-      if (mutations.has("requestFullscreen") && !original?.isFullscreen)
-        await restore("exitFullscreen", undefined);
+      if (mutations.has("requestFullscreen")) {
+        if (original?.isFullscreen) {
+          mutations.delete("requestFullscreen");
+          context.checkpoint?.();
+        } else await restore("exitFullscreen", undefined);
+      }
+      for (const [name, color] of [
+        ["setHeaderColor", original?.theme?.headerBackground],
+        ["setBackgroundColor", original?.theme?.background],
+        ["setBottomBarColor", original?.theme?.bottomBarBackground],
+      ] as const)
+        if (mutations.has(name)) {
+          if (typeof color === "string" && /^#[a-f0-9]{6}$/i.test(color))
+            await restore(name, { color });
+          else errors.push(name);
+        }
+      if (mutations.has("setButton")) {
+        const before = errors.length;
+        for (const button of ["main", "secondary", "back", "settings"]) {
+          if (!client?.supports(`${button}Button` as never)) continue;
+          await restore("setButton", { button, visible: false });
+        }
+        if (errors.length === before) {
+          mutations.delete("setButton");
+          context.checkpoint?.();
+        }
+      }
       context.appearanceGuard?.(false);
       assert(
         !errors.length,
@@ -813,5 +912,108 @@ export function createSuite(context: SuiteContext) {
       return "Тестовые ключи удалены, датчики остановлены и настройки экрана восстановлены";
     },
   };
-  return { plan, cleanup };
+  const checkpoint = (): Recovery => ({
+    key,
+    written: [...written],
+    mutations: [...mutations.keys()].filter((operation) =>
+      (recoveryOperations as readonly string[]).includes(operation),
+    ),
+    original: {
+      ...(typeof original?.isOrientationLocked === "boolean"
+        ? { isOrientationLocked: original.isOrientationLocked }
+        : {}),
+      ...(typeof original?.isFullscreen === "boolean"
+        ? { isFullscreen: original.isFullscreen }
+        : {}),
+      theme: Object.fromEntries(
+        ["background", "headerBackground", "bottomBarBackground"].flatMap(
+          (name) => {
+            const color =
+              original?.theme?.[name as keyof typeof original.theme];
+            return typeof color === "string" && /^#[0-9a-f]{6}$/i.test(color)
+              ? [[name, color]]
+              : [];
+          },
+        ),
+      ),
+    },
+  });
+  const prepareResume = async (signal: AbortSignal) => {
+    if (context.primary !== false) {
+      await bounded(
+        plan.find((check) => check.id === "server")!.execute,
+        signal,
+      );
+      const signature = plan.find((check) => check.id === "signature")!;
+      if (!signature.skip?.()) await bounded(signature.execute, signal);
+    }
+    if (context.recovery) {
+      for (const storage of context.recovery.written) written.add(storage);
+      for (const operation of context.recovery.mutations)
+        mutations.set(operation as MiniAppOperation, 1);
+      original = context.recovery.original;
+      if (!cleanup.skip?.()) await bounded(cleanup.execute, signal, 20000);
+      written.clear();
+      mutations.clear();
+      original = client?.adapter.snapshot();
+      context.checkpoint?.();
+    }
+    if (context.resumeChecks) {
+      lastBot = Date.now();
+      for (const check of context.resumeChecks.filter(
+        (check) => check.state === "passed" && check.id.startsWith("bot:"),
+      )) {
+        const operation = check.id.slice(4);
+        const kind = operation.replace(/^(send|reuse)/, "").toLowerCase();
+        if (
+          operation === "sendMessage"
+            ? resources?.message
+            : operation === "getFile"
+              ? resources?.metadata
+              : resources?.files.includes(kind)
+        )
+          passed.add(check.id);
+      }
+      for (const storage of [
+        "cloudStorage",
+        "deviceStorage",
+        "secureStorage",
+      ]) {
+        if (
+          !client ||
+          !context.resumeChecks.some(
+            (check) => check.id === `${storage}Set` && check.state === "passed",
+          ) ||
+          !context.resumeChecks.some(
+            (check) =>
+              check.id.startsWith(storage) &&
+              /Get|Keys|Remove/.test(check.id) &&
+              unfinished(check),
+          )
+        )
+          continue;
+        written.add(storage);
+        context.checkpoint?.();
+        assert(
+          (await bounded(
+            (s) => call(`${storage}Set` as MiniAppOperation, { key, value }, s),
+            signal,
+          )) !== false,
+          "Не удалось подготовить тестовый ключ для продолжения",
+        );
+        assert(
+          (await bounded(
+            (s) => call(`${storage}Get` as MiniAppOperation, { key }, s),
+            signal,
+          )) === value,
+          "Тестовый ключ для продолжения не подтверждён чтением",
+        );
+        passed.add(`${storage}Set`);
+      }
+    }
+    const permission = plan.find((check) => check.id === "requestWriteAccess")!;
+    if (context.primary !== false && !permission.skip?.())
+      await bounded(permission.execute, signal, 60000);
+  };
+  return { plan, cleanup, checkpoint, prepareResume };
 }

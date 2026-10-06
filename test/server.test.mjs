@@ -424,6 +424,7 @@ test("media/file checks use session-owned IDs and metadata; download reports byt
   clock += 3;
   response = await request("/api/bot", { operation: "downloadFile" }, cookie);
   assert.equal(response.status, 502);
+  clock += 3;
   response = await request(
     "/api/bot",
     { operation: "getFile", fileId: "own-document" },
@@ -598,4 +599,194 @@ test("sendData verification matches only this attempt and signed owner without a
     assert.equal(call.timeout, 0);
     assert.equal(call.limit, 100);
   }
+});
+
+test("public conformance ignores expired cookies while authenticated methods remain closed", async (t) => {
+  const request = await fixture(t);
+  const stale = "sdk_test=expired-synthetic";
+  const response = await request(
+    "/api/bot",
+    { operation: "conformance" },
+    stale,
+  );
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).mode, "synthetic");
+  assert.equal(
+    (await request("/api/bot", { operation: "sendMessage" }, stale)).status,
+    401,
+  );
+});
+
+test("same-run reauthentication rotates cookies, preserves owned resources and requires fresh consent", async (t) => {
+  let clock = now;
+  const sends = [];
+  const request = await fixture(
+    t,
+    {
+      LO_BOT_TOKEN: "42:synthetic-test-token",
+      LO_APP_URL: "https://app.example.test/",
+    },
+    async (url, options) => {
+      const operation = url.split("/").at(-1);
+      const body = JSON.parse(options.body);
+      sends.push({ operation, body });
+      return Response.json({
+        ok: true,
+        result: {
+          message_id: 77,
+          date: now,
+          chat: { id: "9007199254740993", type: "private" },
+          text: body.text,
+        },
+      });
+    },
+    () => clock,
+  );
+  const runId = "11111111-1111-4111-8111-111111111111";
+  const first = await request("/api/session", { raw: signed(), runId });
+  const cookie = first.headers.get("set-cookie").split(";")[0];
+  await request("/api/consent", { allowed: true }, cookie);
+  assert.equal(
+    (await request("/api/bot", { operation: "sendMessage" }, cookie)).status,
+    200,
+  );
+  const resumed = await request(
+    "/api/session",
+    { raw: signed(), runId, resume: true },
+    cookie,
+  );
+  assert.equal(resumed.status, 200);
+  assert.deepEqual((await resumed.json()).resources, {
+    message: true,
+    files: [],
+    metadata: false,
+  });
+  const nextCookie = resumed.headers.get("set-cookie").split(";")[0];
+  assert.notEqual(nextCookie, cookie);
+  assert.equal(
+    (await request("/api/consent", { allowed: true }, cookie)).status,
+    401,
+  );
+  clock += 3;
+  assert.equal(
+    (await request("/api/bot", { operation: "editMessage" }, nextCookie))
+      .status,
+    403,
+  );
+  await request("/api/consent", { allowed: true }, nextCookie);
+  assert.equal(
+    (await request("/api/bot", { operation: "editMessage" }, nextCookie))
+      .status,
+    200,
+  );
+  assert.deepEqual(
+    sends.map((item) => item.operation),
+    ["sendMessage", "editMessageText"],
+  );
+  assert.equal(sends[1].body.message_id, "77");
+  for (const [raw, id] of [
+    [signed({ user: '{"id":202,"first_name":"Other"}' }), runId],
+    [signed(), "22222222-2222-4222-8222-222222222222"],
+  ]) {
+    const isolated = await request(
+      "/api/session",
+      { raw, runId: id, resume: true },
+      nextCookie,
+    );
+    assert.equal(isolated.status, 200);
+    assert.deepEqual((await isolated.json()).resources, {
+      message: false,
+      files: [],
+      metadata: false,
+    });
+  }
+});
+
+test("all cookies for one user share the bot budget, including resume rotation and expiry", async (t) => {
+  let clock = now;
+  const calls = [];
+  const request = await fixture(
+    t,
+    {
+      LO_BOT_TOKEN: "42:synthetic-test-token",
+      LO_APP_URL: "https://app.example.test/",
+    },
+    async (url, options) => {
+      calls.push(url);
+      return Response.json({
+        ok: true,
+        result: {
+          message_id: 1,
+          date: now,
+          chat: { id: JSON.parse(options.body).chat_id, type: "private" },
+          text: "fixture",
+        },
+      });
+    },
+    () => clock,
+  );
+  const runId = "33333333-3333-4333-8333-333333333333";
+  const login = async (cookie = "", resume = false, raw = signed()) => {
+    const response = await request(
+      "/api/session",
+      { raw, runId, resume },
+      cookie,
+    );
+    assert.equal(response.status, 200);
+    const next = response.headers.get("set-cookie").split(";")[0];
+    await request("/api/consent", { allowed: true }, next);
+    return next;
+  };
+  const a = await login(),
+    b = await login();
+  const simultaneous = await Promise.all(
+    [a, b].map((cookie) =>
+      request("/api/bot", { operation: "sendMessage" }, cookie),
+    ),
+  );
+  assert.deepEqual(
+    simultaneous.map((response) => response.status).sort(),
+    [200, 429],
+  );
+  const rotated = await login(b, true);
+  assert.equal(
+    (await request("/api/bot", { operation: "sendMessage" }, rotated)).status,
+    429,
+  );
+  assert.equal(
+    (
+      await request(
+        "/api/send-data/verify",
+        {
+          data: "lo-sdk-test:11111111-1111-4111-8111-111111111111",
+          userId: "9007199254740993",
+          appId: "test-app",
+        },
+        rotated,
+      )
+    ).status,
+    429,
+  );
+  clock += 2;
+  assert.equal(
+    (await request("/api/bot", { operation: "sendMessage" }, rotated)).status,
+    200,
+  );
+  clock = now + 3599;
+  assert.equal(
+    (await request("/api/bot", { operation: "sendMessage" }, rotated)).status,
+    200,
+  );
+  clock++;
+  const fresh = await login("", false, signed({ auth_date: String(clock) }));
+  assert.equal(
+    (await request("/api/bot", { operation: "sendMessage" }, fresh)).status,
+    429,
+  );
+  clock++;
+  assert.equal(
+    (await request("/api/bot", { operation: "sendMessage" }, fresh)).status,
+    200,
+  );
+  assert.equal(calls.length, 4);
 });

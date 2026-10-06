@@ -3,6 +3,8 @@ import { useState } from "react";
 import { SdkVersions } from "./SdkVersions.tsx";
 import {
   bridgeCoverage,
+  canResume,
+  hasRecoveryDebt,
   summarize,
   type CheckResult,
   type RunReport,
@@ -67,6 +69,8 @@ export function RunPage({
   stopping,
   exporting,
   onStart,
+  onResume,
+  resuming,
   onStop,
   onExport,
   onDeferred,
@@ -77,11 +81,14 @@ export function RunPage({
   stopping: boolean;
   exporting: boolean;
   onStart: () => void;
+  onResume?: () => void;
+  resuming?: boolean;
   onStop: () => void;
   onExport: () => void;
   onDeferred: (id: string) => void;
 }) {
   const [filter, setFilter] = useState<keyof typeof filters>("Ошибки");
+  const resumable = canResume(report) && Boolean(onResume);
   const active = starting || report?.state === "running";
   const summary = report ? summarize(report) : null;
   const current = report?.checks.find((c) => c.state === "running");
@@ -108,16 +115,45 @@ export function RunPage({
         <Button
           className="run-start"
           disabled={stopping || (!active && Boolean(interaction))}
-          onClick={active ? onStop : onStart}
+          onClick={active ? onStop : resumable ? onResume : onStart}
         >
           {stopping
             ? "Останавливаем…"
             : active
               ? "Остановить проверку"
-              : report
-                ? "Проверить снова"
-                : "Проверить все мосты"}
+              : resumable
+                ? "Продолжить проверку"
+                : report
+                  ? "Проверить снова"
+                  : "Проверить все мосты"}
         </Button>
+        {resumable && !active && (
+          <>
+            <p className="note">
+              Сохраним готовые результаты и продолжим незавершённые шаги. Для
+              прерванных действий снова потребуется подтверждение.
+            </p>
+            <Button
+              variant="secondary"
+              disabled={Boolean(interaction) || hasRecoveryDebt(report)}
+              onClick={onStart}
+            >
+              Начать заново
+            </Button>
+          </>
+        )}
+        {report?.resumeError && !active && (
+          <p role="status" className="feed-error">
+            Не удалось продолжить: {report.resumeError}
+          </p>
+        )}
+        {(report?.resumeBlocked || hasRecoveryDebt(report)) && !active && (
+          <p className="note">
+            {resumable
+              ? "Восстановление после остановки не подтверждено. При продолжении сначала повторим очистку; готовые результаты останутся."
+              : "Восстановление после остановки не подтверждено. Продолжение недоступно; заново откройте приложение в LO и начните новый прогон."}
+          </p>
+        )}
         {active && summary && (
           <>
             <div className="run-progress-label">
@@ -139,7 +175,9 @@ export function RunPage({
               ? "Удаляем тестовые данные…"
               : current
                 ? `${current.bridge ? `${current.bridge} · ` : ""}${current.label}`
-                : "Запускаем…"}
+                : resuming
+                  ? "Восстанавливаем подключение…"
+                  : "Запускаем…"}
           </p>
         )}
       </section>
