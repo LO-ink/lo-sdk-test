@@ -2,7 +2,7 @@
 
 A mini-app for checking LO SDKs, native bridges and the Bot API. Hosted at [sdk-test.zay.media](https://sdk-test.zay.media).
 
-Run the guided checks to see progress, respond to permissions and confirmations, and download a report. Audio, vibration, colors and gestures require confirmation of the observed device effect. A successful API response alone does not establish that effect. Skipped checks remain unverified. The manual tab runs individual methods. The UI tab shows all sixteen published UI primitives, including disabled, loading, validation, icon and typography states. Its examples work locally without bridge or Bot API calls; the theme selector applies only to the gallery.
+Run the guided checks to see progress, respond to permissions and confirmations, and download a report. Audio, vibration, colors and gestures require confirmation of the observed device effect. A successful API response alone does not establish that effect. Skipped checks remain unverified. The manual tab runs individual methods. The UI tab shows all seventeen published UI primitives, including disabled, loading, validation, icon and typography states. Its examples work locally without bridge or Bot API calls; the theme selector applies only to the gallery.
 
 A stopped run offers Continue and a separate Start over action. Completed results, run identity and progress stay intact, including after reopening. Continuation verifies a fresh session and requests fresh bot consent; it never restores permission from browser storage. Run-owned cleanup state is saved before mutations so interrupted storage and screen changes can be restored before continuing. An unresolved restoration is shown explicitly and cannot be discarded by starting another run.
 
@@ -86,6 +86,10 @@ Gallery image examples use the canonical LOOriginalWhiteAppIcon artwork from
 LO's native application. Text avatars are separate examples with size-aware type.
 Application CSS owns report layout and safe-area/test-observation geometry;
 control appearance belongs to the UI package.
+
+Search fields retain the native filled shape and 38px height with a 16px input
+font. This web adaptation prevents automatic iOS focus zoom; browser pinch zoom
+remains available.
 
 LO Pro UI, Display and Mono are loaded from the design-tokens package. The
 application does not provide its own font or control appearance. ESLint requires

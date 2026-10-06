@@ -248,8 +248,9 @@ test("manual filters retain whole labels, field geometry and text/action gaps", 
     await search.evaluate((e) => ({
       height: e.getBoundingClientRect().height,
       radius: getComputedStyle(e).borderRadius,
+      fontSize: getComputedStyle(e).fontSize,
     })),
-  ).toEqual({ height: 38, radius: "6px" });
+  ).toEqual({ height: 38, radius: "6px", fontSize: "16px" });
   await page.getByRole("tab", { name: "Данные запуска", exact: true }).click();
   const note = page.getByText("Сырая строка и ключи не входят в отчёт.");
   const button = page.getByRole("button", { name: "Проверить подпись" });
