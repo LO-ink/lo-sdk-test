@@ -1,0 +1,51 @@
+name: lo-sdk-test
+services:
+  web:
+    image: ${SDK_TEST_IMAGE:?SDK_TEST_IMAGE is required}
+    restart: unless-stopped
+    init: true
+    env_file: /opt/lo-sdk-test/runtime.env
+    environment:
+      PORT: "5407"
+      BIND_ADDRESS: 0.0.0.0
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:5407/api/status').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 20s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: 5m, max-file: "2" }
+    networks: [traefik]
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik-public
+      traefik.http.routers.lo-sdk-test.rule: Host(`sdk-test.zay.media`)
+      traefik.http.routers.lo-sdk-test.entrypoints: https
+      traefik.http.routers.lo-sdk-test.tls: "true"
+      traefik.http.routers.lo-sdk-test.tls.certresolver: letsEncrypt
+      traefik.http.routers.lo-sdk-test.service: lo-sdk-test
+      traefik.http.services.lo-sdk-test.loadbalancer.server.port: "5407"
+      traefik.http.routers.lo-sdk-test-http.rule: Host(`sdk-test.zay.media`)
+      traefik.http.routers.lo-sdk-test-http.entrypoints: http
+      traefik.http.routers.lo-sdk-test-http.service: lo-sdk-test
+      traefik.http.routers.lo-sdk-test-http.middlewares: lo-sdk-test-https
+      traefik.http.middlewares.lo-sdk-test-https.redirectscheme.scheme: https
+      traefik.http.middlewares.lo-sdk-test-https.redirectscheme.permanent: "true"
+networks:
+  traefik:
+    external: true
+    name: traefik-public

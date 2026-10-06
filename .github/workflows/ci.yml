@@ -1,0 +1,105 @@
+name: Checks and deployment
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: "24.21.0", cache: npm }
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with: { go-version: "1.27.1", cache: false }
+      - name: Scan source for secrets
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/gitleaks.tar.gz" https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          printf '%s  %s\n' "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb" "$RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" dir . --redact --no-banner
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run format:check
+      - run: bash -n deploy/release.sh
+      - run: npm test
+      - run: npm run build
+        env: { BUILD_REVISION: "${{ github.sha }}" }
+  container:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: { node-version: "24.21.0" }
+      - run: docker build --platform linux/amd64 --build-arg BUILD_REVISION="$GITHUB_SHA" -t lo-sdk-test:ci .
+      - run: node scripts/check-container.mjs lo-sdk-test:ci
+        env: { BUILD_REVISION: "${{ github.sha }}" }
+      - run: docker save lo-sdk-test:ci | gzip > image.tar.gz
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: image-${{ github.sha }}
+          path: image.tar.gz
+          retention-days: 3
+  publish:
+    needs: container
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: { name: "image-${{ github.sha }}" }
+      - run: gunzip -c image.tar.gz | docker load
+      - name: Publish the verified image
+        id: image
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/lo-ink/lo-sdk-test:sha-$GITHUB_SHA"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' lo-sdk-test:ci)" = "$GITHUB_SHA"
+          docker tag lo-sdk-test:ci "$image"
+          docker push "$image"
+          digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$image")
+          digest=${digest#ghcr.io/lo-ink/lo-sdk-test@}
+          [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://sdk-test.zay.media
+    concurrency:
+      group: production-deployment
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Deploy the exact verified image
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          SSH_HOST: ${{ vars.DEPLOY_HOST }}
+          SSH_USER: ${{ vars.DEPLOY_USER }}
+          IMAGE_DIGEST: ${{ needs.publish.outputs.digest }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/deploy" "$HOME/.ssh/known_hosts"
+          trap 'rm -f "$HOME/.ssh/deploy"' EXIT
+          printf '%s' "$GHCR_TOKEN" | ssh -i "$HOME/.ssh/deploy" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 "$SSH_USER@$SSH_HOST" "deploy $IMAGE_DIGEST $GITHUB_SHA $GITHUB_ACTOR"

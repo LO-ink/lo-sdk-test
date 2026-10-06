@@ -1,0 +1,75 @@
+{
+  "appVersion": "0.4.19",
+  "source": "npm-registry",
+  "repositories": [
+    {
+      "name": "lo-bot-sdk",
+      "url": "https://github.com/LO-ink/lo-bot-sdk",
+      "commit": "8098ce31e75c5bb8e7c8bb9977fcd154f40b92bf"
+    },
+    {
+      "name": "lo-miniapp-sdk",
+      "url": "https://github.com/LO-ink/lo-miniapp-sdk",
+      "commit": "0332f5d792a9e06629ef002677f4ac40e895e352"
+    },
+    {
+      "name": "lo-platform-adapters",
+      "url": "https://github.com/LO-ink/lo-platform-adapters",
+      "commit": "df582393dcf4141f486d2766a903c19734209f00"
+    }
+  ],
+  "packages": [
+    {
+      "name": "@lo-ink/bot-sdk",
+      "version": "0.4.2",
+      "repository": "lo-bot-sdk",
+      "sourceCommit": "8098ce31e75c5bb8e7c8bb9977fcd154f40b92bf",
+      "integrity": "sha512-J+9p9Nj1kb8DcuclzgKir/66M1u9CzGLDhs+7ndS1of/C5WRW/u0JOznAgW8S6v/GBGAQ1tACr3RQ7aZCNYGHQ=="
+    },
+    {
+      "name": "@lo-ink/miniapp-sdk",
+      "version": "0.20.3",
+      "repository": "lo-miniapp-sdk",
+      "sourceCommit": "0332f5d792a9e06629ef002677f4ac40e895e352",
+      "integrity": "sha512-3S9tp0C8VK+roeRkIFClE0lIK6Poy1lbOGrqBGh42mIqapLFxEkmSYWkd97jN61nBl5S3Qx3/UFZSIs/qiieCQ=="
+    },
+    {
+      "name": "@lo-ink/adapter-lo",
+      "version": "0.23.2",
+      "repository": "lo-platform-adapters",
+      "sourceCommit": "df582393dcf4141f486d2766a903c19734209f00",
+      "integrity": "sha512-FIWE0qdBMHKNhKHuEUXwPRz5cTDPV/uo5AWqL504CYGCvLZgje2BtAA9ZXvqYb1b0m7k79Y7EfrgM0D7o00HPA=="
+    },
+    {
+      "name": "@lo-ink/adapter-lo-legacy",
+      "version": "0.1.3",
+      "repository": "lo-platform-adapters",
+      "sourceCommit": "df582393dcf4141f486d2766a903c19734209f00",
+      "integrity": "sha512-d8CWb8PjGDPwK5BpfhFLSMMLyXY4NpwXDM6XaqTqvcrVZgSJrf/eWec2E8enHj//TBhFZktUrEL2vut0asaNYQ=="
+    },
+    {
+      "name": "@lo-ink/adapter-webapp-compat",
+      "version": "0.19.3",
+      "repository": "lo-platform-adapters",
+      "sourceCommit": "f2d0f3236f5947b74e8aad43a57bfb576d092b17",
+      "integrity": "sha512-2Ky9sdIvW2jqb8D1ieeRdhH0J0xMmxG0uEEZEukW1YWDppvnEtmQmvcuC4GPuNagXtINrCuwhV/Nxd/OYHK2zg=="
+    },
+    {
+      "name": "@lo-ink/bot-http-lo",
+      "version": "0.4.2",
+      "repository": "lo-platform-adapters",
+      "sourceCommit": "f2d0f3236f5947b74e8aad43a57bfb576d092b17",
+      "integrity": "sha512-OezLrpP5ytwiWp0KwKxpIeYQ5+SpT8S5tPpZ/hZMW/ypGiHrcgcAHF7vGCjnyoveZkN8Jl8Ct8pHHby0vOfvwQ=="
+    }
+  ],
+  "goVerifier": {
+    "module": "github.com/LO-ink/lo-miniapp-sdk/go",
+    "sourceCommit": "25d51f20a408801d7c35ed6c12007bfe402e83e4",
+    "provenance": "server/go/sdk-provenance.json",
+    "toolchain": "go1.27.1"
+  },
+  "botContract": {
+    "serverCommit": "285b2f31f809c55f22ad2cb74f6c4e035daa9926",
+    "methods": 178
+  }
+}
