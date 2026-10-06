@@ -7,7 +7,7 @@ const readJson = (relative) =>
   JSON.parse(readFileSync(new URL(relative, root), "utf8"));
 
 test("reported SDK versions and integrity match the public registry lock and installed packages", () => {
-  const build = readJson("public/sdk-build.json");
+  const build = readJson("sdk-build.json");
   const manifest = readJson("package.json");
   const lock = readJson("package-lock.json");
   const declared = Object.keys(manifest.dependencies).filter((name) =>

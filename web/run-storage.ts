@@ -26,6 +26,9 @@ const legacyDependencies =
 const uiUpgradeDependencies = legacyDependencies
   .replace("@lo-ink/design-tokens@0.1.1", "@lo-ink/design-tokens@0.2.0")
   .replace("@lo-ink/ui@0.1.1", "@lo-ink/ui@0.2.0");
+const uiPatchDependencies = uiUpgradeDependencies
+  .replace("@lo-ink/ui@0.2.0", "@lo-ink/ui@0.3.0")
+  .replace("@lo-ink/design-tokens@0.2.0", "@lo-ink/design-tokens@0.3.0");
 export function dependencyKey(
   packages: ReadonlyArray<{ name: string; version: string }>,
 ): string {
@@ -121,11 +124,16 @@ export function readRun(
     const legacy =
       saved.schema === undefined &&
       saved.appVersion === "0.4.21" &&
-      [legacyDependencies, uiUpgradeDependencies].includes(dependencies);
+      [legacyDependencies, uiUpgradeDependencies, uiPatchDependencies].includes(
+        dependencies,
+      );
     const reviewedUiUpgrade =
-      saved.appVersion === "0.4.22" &&
-      saved.dependencies === legacyDependencies &&
-      dependencies === uiUpgradeDependencies;
+      (saved.appVersion === "0.4.22" &&
+        saved.dependencies === legacyDependencies &&
+        [uiUpgradeDependencies, uiPatchDependencies].includes(dependencies)) ||
+      (saved.appVersion === "0.4.23" &&
+        saved.dependencies === uiUpgradeDependencies &&
+        dependencies === uiPatchDependencies);
     if (
       !legacy &&
       (saved.schema !== 1 ||

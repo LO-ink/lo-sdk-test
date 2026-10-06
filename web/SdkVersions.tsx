@@ -1,6 +1,7 @@
+import { Text } from "@lo-ink/ui";
 import { useEffect, useState } from "react";
 import { version as appVersion } from "../package.json";
-import sdkBuild from "../public/sdk-build.json";
+import sdkBuild from "../sdk-build.json";
 
 type VersionState = "current" | "update" | "ahead" | "unknown";
 type VersionCheck = {
@@ -64,7 +65,9 @@ export function SdkVersions() {
           />
         </svg>
       </summary>
-      <p className="note">LO SDK Test · {appVersion}</p>
+      <Text tone="secondary" size="caption">
+        LO SDK Test · {appVersion}
+      </Text>
       <ul>
         {sdkBuild.packages.map((p) => {
           const result = check?.packages.find(
@@ -79,18 +82,35 @@ export function SdkVersions() {
               : "unknown";
           return (
             <li key={p.name}>
-              <span className="sdk-package">
-                <code>{p.name}</code>
-                <span className="sdk-version-number">{p.version}</span>
-              </span>
-              <span className={`version-status ${state}`}>
+              <Text as="span" size="caption" className="sdk-package">
+                <Text as="code" family="mono" size="caption">
+                  {p.name}
+                </Text>
+                <Text as="span" size="caption" className="sdk-version-number">
+                  {p.version}
+                </Text>
+              </Text>
+              <Text
+                as="span"
+                size="caption"
+                tone={state === "current" ? "success" : "secondary"}
+                weight={
+                  state === "update" || state === "ahead" ? "medium" : "regular"
+                }
+                className="version-status"
+              >
                 {loading ? "Проверяем…" : labels[state]}
-              </span>
+              </Text>
             </li>
           );
         })}
       </ul>
-      <p className="note sdk-comparison" role="status">
+      <Text
+        tone="secondary"
+        size="caption"
+        className="sdk-comparison"
+        role="status"
+      >
         {loading ? (
           "Проверяем обновления…"
         ) : check ? (
@@ -106,7 +126,7 @@ export function SdkVersions() {
         ) : (
           "GitHub недоступен. Актуальность не проверена."
         )}
-      </p>
+      </Text>
     </details>
   );
 }

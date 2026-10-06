@@ -523,6 +523,10 @@ test("the UI catalog covers all public primitives with local, isolated interacti
     "Heading · Text",
     "EmptyState",
     "Stack · Inline",
+    "TextArea",
+    "Dialog",
+    "Progress",
+    "Surface",
   ])
     assert.ok(page.getByRole("region", { name }));
   const demonstrated = [
@@ -601,6 +605,13 @@ test("the UI catalog covers all public primitives with local, isolated interacti
       .readOnly,
     true,
   );
+  const modal = page
+    .getByRole("region", { name: "Dialog" })
+    .querySelector("dialog")!;
+  fireEvent.click(page.getByRole("button", { name: "Открыть диалог" }));
+  assert.equal(modal.open, true);
+  fireEvent.click(page.getByRole("button", { name: "Закрыть диалог" }));
+  assert.equal(modal.open, false);
   assert.equal(requests, 0);
 });
 

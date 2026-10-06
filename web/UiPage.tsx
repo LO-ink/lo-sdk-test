@@ -1,6 +1,10 @@
-import { useState, type ReactNode } from "react";
+import { useState, useRef, type ReactNode } from "react";
 import {
   AppIcon,
+  Surface,
+  Dialog,
+  TextArea,
+  Progress,
   Button,
   Cell,
   Checkbox,
@@ -23,17 +27,13 @@ function CheckIcon() {
 }
 function Section({ name, children }: { name: string; children: ReactNode }) {
   return (
-    <section className="ui-demo" aria-label={name}>
+    <Surface className="ui-demo" aria-label={name}>
       <Heading level={3}>{name}</Heading>
       {children}
-    </section>
+    </Surface>
   );
 }
-const iconSource =
-  "data:image/svg+xml," +
-  encodeURIComponent(
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#5969fc"/><path d="M18 17v30h15M45 17a10 15 0 1 0 0 30 10 15 0 1 0 0-30" fill="none" stroke="#fff" stroke-width="4"/></svg>',
-  );
+const iconSource = "/demo-app-icon.svg";
 
 export function UiPage() {
   const [theme, setTheme] = useState<"host" | "light" | "dark">("host");
@@ -41,6 +41,7 @@ export function UiPage() {
   const [name, setName] = useState("");
   const [notifications, setNotifications] = useState(true);
   const [privateList, setPrivateList] = useState(false);
+  const dialog = useRef<HTMLDialogElement>(null);
   const [created, setCreated] = useState(false);
   return (
     <div
@@ -50,7 +51,7 @@ export function UiPage() {
       <Stack gap={4}>
         <Heading level={2}>UI компоненты</Heading>
         <Text tone="secondary">
-          Все компоненты @lo-ink/ui. Действия работают только на этой странице.
+          Компоненты LO. Действия работают только на этой странице.
         </Text>
         <Inline gap={2} role="group" aria-label="Тема компонентов">
           {(["host", "light", "dark"] as const).map((value) => (
@@ -247,6 +248,9 @@ export function UiPage() {
           </List>
         </Section>
         <Section name="AppIcon">
+          <Text size="label" tone="secondary">
+            Изображение: 32 · 44 · 64 px
+          </Text>
           <Inline gap={4}>
             <AppIcon
               src={iconSource}
@@ -259,11 +263,34 @@ export function UiPage() {
               alt="Пример значка LO: большой"
               size="large"
             />
-            <AppIcon aria-label="Значок без изображения">LO</AppIcon>
+          </Inline>
+          <Text size="label" tone="secondary">
+            Текстовый значок: 32 · 44 · 64 px
+          </Text>
+          <Inline gap={4}>
+            {(["small", "medium", "large"] as const).map((size) => (
+              <AppIcon
+                key={size}
+                size={size}
+                aria-label={`Текстовый значок: ${size}`}
+              >
+                LO
+              </AppIcon>
+            ))}
           </Inline>
         </Section>
         <Section name="Heading · Text">
           <Stack gap={3}>
+            <Text family="ui">LO Pro UI · обычный текст</Text>
+            <Text family="display">LO Pro Display · текст</Text>
+            <Text family="mono">LO Pro Mono · код</Text>
+            <Text tone="success">Успешное действие</Text>
+            <Text size="title" weight="bold">
+              Заголовок 26 px
+            </Text>
+            <Text size="display" weight="bold">
+              40 px
+            </Text>
             <Heading level={4}>Заголовок</Heading>
             {(["body", "label", "caption"] as const).map((size) => (
               <Inline key={size} gap={3}>
@@ -299,6 +326,62 @@ export function UiPage() {
           )}
           <EmptyState headingLevel={4} title="Без дополнительных элементов" />
         </Section>
+        <Section name="TextArea">
+          <Stack gap={4}>
+            <TextArea
+              label="Описание"
+              placeholder="Несколько строк"
+              rows={3}
+              description="Текст остаётся на этой странице"
+            />
+            <TextArea
+              label="Ошибка в описании"
+              error="Проверьте описание"
+              defaultValue="x"
+            />
+            <TextArea
+              label="Описание только для чтения"
+              readOnly
+              value="Сохранённый текст"
+            />
+            <TextArea
+              label="Отключённое описание"
+              disabled
+              value="Недоступно"
+            />
+          </Stack>
+        </Section>
+        <Section name="Dialog">
+          <Button
+            variant="secondary"
+            onClick={() => dialog.current?.showModal()}
+          >
+            Открыть диалог
+          </Button>
+          <Dialog ref={dialog} aria-labelledby="ui-dialog-title">
+            <Stack gap={4}>
+              <Heading level={4} id="ui-dialog-title">
+                Пример диалога
+              </Heading>
+              <Text>Диалог можно закрыть кнопкой или Escape.</Text>
+              <Button autoFocus onClick={() => dialog.current?.close()}>
+                Закрыть диалог
+              </Button>
+            </Stack>
+          </Dialog>
+        </Section>
+        <Section name="Progress">
+          <Text size="label">Выполнено 40%</Text>
+          <Progress value={40} max={100} aria-label="Пример прогресса" />
+          <Text size="label">Ожидание результата</Text>
+          <Progress aria-label="Неопределённый прогресс" />
+        </Section>
+        <Section name="Surface">
+          <Text>
+            Поверхность раздела: общие отступы, фон, граница и скругление из
+            SDK.
+          </Text>
+        </Section>
         <Section name="Stack · Inline">
           <Stack gap={4}>
             <Text size="label" tone="secondary">
@@ -306,9 +389,7 @@ export function UiPage() {
             </Text>
             <Stack gap={4}>
               {["Первый", "Второй", "Третий"].map((label) => (
-                <Text key={label} className="ui-layout-sample">
-                  {label}
-                </Text>
+                <Text key={label}>{label}</Text>
               ))}
             </Stack>
             <Text size="label" tone="secondary">
@@ -316,9 +397,7 @@ export function UiPage() {
             </Text>
             <Inline gap={2}>
               {["Первый", "Второй", "Третий", "Четвёртый"].map((label) => (
-                <Text key={label} className="ui-layout-sample">
-                  {label}
-                </Text>
+                <Text key={label}>{label}</Text>
               ))}
             </Inline>
           </Stack>
