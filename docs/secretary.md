@@ -20,8 +20,11 @@ Put these values in the protected runtime environment, never Git or the browser:
 - `LO_SECRETARY_TEST_EXCLUSIVE_POLL=true`: confirm this server is the only receiver
   for this dedicated bot. Do not run another poller or webhook consumer.
 
-VPS compose mounts `secretary-state` at `/var/lib/lo-sdk-test`, owned by the
-unprivileged image user. Preserve that volume across deploys. Other deployments
+Before enabling the flow on an existing VPS, an administrator must install the
+updated `deploy/compose.vps.yml` as described in [deployment setup](../deploy/README.md).
+Automatic image deployments do not replace the server's Compose file.
+The updated Compose file mounts `secretary-state` at `/var/lib/lo-sdk-test`, owned
+by the unprivileged image user. Preserve that volume across deploys. Other deployments
 must supply a private writable directory owned by the service user. Run one
 service process. The server never switches update delivery modes automatically.
 
