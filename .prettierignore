@@ -1,3 +1,14 @@
-
 server/go/sdk/
 server/go/bin/
+
+coverage/
+.venv/
+**/*.tgz
+.ruff_cache/
+.mypy_cache/
+
+**/*.egg-info
+**/build
+coverage-go.out
+
+coverage-go.txt

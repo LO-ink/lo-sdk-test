@@ -5,7 +5,7 @@ import {
   type MiniAppClient,
   type MiniAppOperation,
 } from "@lo-ink/miniapp-sdk";
-import { createAdapter } from "@lo-ink/adapter-lo-legacy";
+import { createAdapter } from "@lo-ink/adapter-lo";
 import { cases, events, operationNames } from "./cases.ts";
 import { applyPalette } from "./theme.ts";
 import { RunPage } from "./RunPage.tsx";
@@ -695,11 +695,27 @@ export function App() {
         if (next?.supports("bottomBarColor"))
           void next
             .call("setBottomBarColor", { color: pageColor })
-            .catch(() => {});
+            .catch((error: unknown) =>
+              complete(
+                "appearance:setBottomBarColor",
+                error instanceof Error
+                  ? error.message
+                  : "Ошибка цвета интерфейса",
+                "failed",
+              ),
+            );
         if (next?.supports("backgroundColor"))
           void next
             .call("setBackgroundColor", { color: pageColor })
-            .catch(() => {});
+            .catch((error: unknown) =>
+              complete(
+                "appearance:setBackgroundColor",
+                error instanceof Error
+                  ? error.message
+                  : "Ошибка цвета интерфейса",
+                "failed",
+              ),
+            );
       }
     };
     appearance();
@@ -1132,7 +1148,9 @@ export function App() {
                 <p className="note">Сырая строка и ключи не входят в отчёт.</p>
                 <button
                   disabled={!client || !configuration?.appConfigured}
-                  onClick={authenticate}
+                  onClick={() => {
+                    void authenticate();
+                  }}
                 >
                   Проверить подпись
                 </button>
@@ -1168,7 +1186,12 @@ export function App() {
                   <h3>Тестовый сигнал</h3>
                   <p>Контекст: {audioState}</p>
                 </div>
-                <button className="secondary" onClick={playAudio}>
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    void playAudio();
+                  }}
+                >
                   Проверить звук
                 </button>
               </div>
@@ -1271,7 +1294,9 @@ export function App() {
                           ) : (
                             <button
                               disabled={!supported}
-                              onClick={() => run(name)}
+                              onClick={() => {
+                                void run(name);
+                              }}
                             >
                               Тест
                             </button>
@@ -1329,7 +1354,9 @@ export function App() {
                     !configuration?.botConfigured ||
                     consent === true
                   }
-                  onClick={() => run("requestWriteAccess")}
+                  onClick={() => {
+                    void run("requestWriteAccess");
+                  }}
                 >
                   Разрешить
                 </button>
@@ -1350,7 +1377,9 @@ export function App() {
                   <button
                     className="secondary"
                     disabled={!authenticated}
-                    onClick={() => saveConsent()}
+                    onClick={() => {
+                      void saveConsent();
+                    }}
                   >
                     Повторить отправку ответа
                   </button>
@@ -1387,7 +1416,9 @@ export function App() {
                         ].includes(operation) &&
                           consent !== true)
                       }
-                      onClick={() => bot(operation)}
+                      onClick={() => {
+                        void bot(operation);
+                      }}
                     >
                       Тест
                     </button>
@@ -1462,7 +1493,9 @@ export function App() {
                         consent !== true ||
                         (operation.startsWith("send") && !file)
                       }
-                      onClick={() => bot(operation)}
+                      onClick={() => {
+                        void bot(operation);
+                      }}
                     >
                       Тест
                     </button>
@@ -1485,7 +1518,9 @@ export function App() {
                 </div>
                 <button
                   className="secondary"
-                  onClick={() => bot("conformance")}
+                  onClick={() => {
+                    void bot("conformance");
+                  }}
                 >
                   Проверить
                 </button>

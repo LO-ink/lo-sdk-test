@@ -26,9 +26,9 @@ type response struct {
 	AuthDate int64  `json:"authDate,omitempty"`
 }
 
-func verify() response {
+func verify(reader io.Reader) response {
 	var input request
-	decoder := json.NewDecoder(io.LimitReader(os.Stdin, 80001))
+	decoder := json.NewDecoder(io.LimitReader(reader, 80001))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&input) != nil {
 		return response{Code: "invalid-data"}
@@ -55,7 +55,13 @@ func verify() response {
 	return result
 }
 
+func run(reader io.Reader, writer io.Writer) error {
+	return json.NewEncoder(writer).Encode(verify(reader))
+}
+
 func main() {
 	// Credentials enter through stdin and never appear in output or argv.
-	_ = json.NewEncoder(os.Stdout).Encode(verify())
+	if run(os.Stdin, os.Stdout) != nil {
+		os.Exit(1)
+	}
 }

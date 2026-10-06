@@ -6,9 +6,10 @@ import {
   createInteraction,
   type InteractionView,
   type Interact,
+  type Interaction,
 } from "../web/interaction.ts";
 import { guidedBridgeCheck } from "../web/bridge-checks.ts";
-import { bridgeCoverage, runChecks, type RunReport } from "../web/runner.ts";
+import { bridgeCoverage, runChecks, type CheckOutcome } from "../web/runner.ts";
 import { createSuite } from "../web/suite.ts";
 import { availableBridges } from "../web/bridges.ts";
 import { operationNames } from "../web/cases.ts";
@@ -18,7 +19,14 @@ const signal = () => new AbortController().signal;
 const tick = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 };
-const client = (call: (...args: any[]) => Promise<any>, snapshot = {}) =>
+const client = <Input>(
+  call: (
+    operation: string,
+    input: Input,
+    options: { signal: AbortSignal },
+  ) => Promise<unknown>,
+  snapshot = {},
+) =>
   ({
     call,
     supports: () => true,
@@ -255,7 +263,7 @@ test("colour check restores the actual previous colour and releases the theme gu
     colours: string[] = [],
     guards: boolean[] = [];
   const adapter = client(
-    async (_name, input, options) => {
+    async (_name, input: { color: string }, options) => {
       colours.push(input.color);
       assert.equal(options.signal.aborted, false);
     },
@@ -305,7 +313,10 @@ test("button confirmation requires a fresh bridge event; cleanup hides only a bu
     ),
     /не подтверждено событием/,
   );
-  assert.equal((calls[1] as any).params.visible, false);
+  assert.equal(
+    (calls[1] as { params: { visible: boolean } }).params.visible,
+    false,
+  );
   calls.length = 0;
   await guidedBridgeCheck(
     "setButton",
@@ -337,14 +348,14 @@ test("back and settings checks work through the compatible bridge without text o
     );
     const check = suite(sdk, {
       observed: () => observed,
-      interact: async (prompt: any) => {
-        await prompt.action("");
+      interact: async (prompt: Interaction) => {
+        await prompt.action!("");
         observed[`${button}ButtonClicked`] = "fresh";
         return { decision: "yes" };
       },
     }).plan.find((check) => check.id === `button:${button}`)!;
     const result = await check.execute(signal());
-    assert.equal((result as any).state, "passed");
+    assert.equal((result as CheckOutcome).state, "passed");
     assert.deepEqual(visibility, [true, false]);
   }
 });
@@ -361,7 +372,7 @@ test("sensor start acknowledgement without a fresh finite sample fails rather th
     return () => {
       released = true;
     };
-  }) as any;
+  }) as MiniAppClient["on"];
   await assert.rejects(
     guidedBridgeCheck(
       "startAccelerometer",
@@ -384,7 +395,7 @@ test("sensor scenarios use LO's valid millisecond interval and require actual sa
     "startDeviceOrientation",
   ] as const) {
     let subscriber: ((payload: unknown) => void) | undefined;
-    const adapter = client(async (_name, input) => {
+    const adapter = client(async (_name, input: { refreshRate: number }) => {
       // LO's native wire rejects intervals outside 20–1000 ms.
       assert.ok(
         Number.isInteger(input.refreshRate) &&
@@ -401,7 +412,7 @@ test("sensor scenarios use LO's valid millisecond interval and require actual sa
     adapter.on = ((_event: string, listener: (payload: unknown) => void) => {
       subscriber = listener;
       return () => {};
-    }) as any;
+    }) as MiniAppClient["on"];
     const result = await guidedBridgeCheck(
       operation,
       {
@@ -431,7 +442,7 @@ test("sensor refusal is unverified only with a fresh explicit unavailable event"
       adapter.on = ((event: string, listener: (value: unknown) => void) => {
         listeners.set(event, listener);
         return () => listeners.delete(event);
-      }) as any;
+      }) as MiniAppClient["on"];
       const result = guidedBridgeCheck(
         operation,
         {
@@ -484,7 +495,7 @@ test("biometry cleanup preserves successful and uncertain writes but excludes de
   for (const writes of [[false], [true], [true, false], ["throw"]] as const) {
     let index = 0;
     let removals = 0;
-    const adapter = client(async (operation, input) => {
+    const adapter = client(async (operation, input: { token: string }) => {
       if (operation === "getBiometryInfo") return { tokenSaved: true };
       assert.equal(operation, "updateBiometryToken");
       if (input.token === "") {
@@ -496,9 +507,9 @@ test("biometry cleanup preserves successful and uncertain writes but excludes de
       return result;
     });
     const checks = suite(adapter, {
-      interact: async (prompt: any) => {
+      interact: async (prompt: Interaction) => {
         let value: unknown;
-        for (const _ of writes) value = await prompt.action("");
+        for (const _ of writes) value = await prompt.action!("");
         return { decision: "yes", value };
       },
     });
@@ -564,24 +575,26 @@ test("cloud key enumeration checks before and after removal; an empty-result hos
   for (const failEmpty of [false, true]) {
     const values = new Map<string, string>(),
       calls: string[] = [];
-    const adapter = client(async (name, input) => {
-      calls.push(name);
-      if (name === "cloudStorageSet") {
-        values.set(input.key, input.value);
-        return true;
-      }
-      if (name === "cloudStorageGet") return values.get(input.key) ?? null;
-      if (name === "cloudStorageKeys") {
-        if (!values.size && failEmpty)
-          throw new Error("empty keys host failure");
-        return [...values.keys()];
-      }
-      if (name === "cloudStorageRemove") {
-        values.delete(input.key);
-        return true;
-      }
-      return null;
-    });
+    const adapter = client(
+      async (name, input: { key: string; value: string }) => {
+        calls.push(name);
+        if (name === "cloudStorageSet") {
+          values.set(input.key, input.value);
+          return true;
+        }
+        if (name === "cloudStorageGet") return values.get(input.key) ?? null;
+        if (name === "cloudStorageKeys") {
+          if (!values.size && failEmpty)
+            throw new Error("empty keys host failure");
+          return [...values.keys()];
+        }
+        if (name === "cloudStorageRemove") {
+          values.delete(input.key);
+          return true;
+        }
+        return null;
+      },
+    );
     const value = suite(adapter);
     const report = await runChecks(
       value.plan.filter((item) =>
@@ -678,7 +691,7 @@ test("cloud enumeration respects the listener refill budget across every interna
   t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 100000 });
   const values = new Map<string, string>();
   const times: number[] = [];
-  const sdk = client(async (name, input) => {
+  const sdk = client(async (name, input: { key: string; value: string }) => {
     const now = Date.now();
     if (times.length && now - times.at(-1)! < 1000)
       throw new Error("STORAGE_QUOTA_EXCEEDED");
@@ -729,18 +742,18 @@ test("bot pacing waits after the actual interactive request even when the user t
     {
       consent: true,
       includeBot: true,
-      api: async (path: string, body: any) => {
+      api: async (path: string, body?: { operation: string }) => {
         if (path === "status")
           return { appConfigured: true, botConfigured: true };
         if (path === "session") return { verified: true };
         if (path === "consent") return {};
-        calls.push({ operation: body.operation, time: Date.now() });
+        calls.push({ operation: body!.operation, time: Date.now() });
         t.mock.timers.tick(300);
         return { mode: "live", result: true };
       },
-      interact: async (request: any) => {
+      interact: async (request: Interaction) => {
         t.mock.timers.tick(5000);
-        return { decision: "yes", value: await request.action() };
+        return { decision: "yes", value: await request.action!("") };
       },
     },
   );
@@ -769,9 +782,13 @@ test("flag cases require both device effects and restore independently on succes
       const controller = new AbortController();
       const calls: { value: boolean; signal: AbortSignal }[] = [];
       const sdk = client(
-        async (_name, input, options) => {
+        async (
+          _name,
+          input: { locked: boolean } | { enabled: boolean },
+          options,
+        ) => {
           calls.push({
-            value: input.locked ?? input.enabled,
+            value: "locked" in input ? input.locked : input.enabled,
             signal: options.signal,
           });
         },
@@ -870,7 +887,7 @@ test("closing confirmation is reset, freshly enabled, then disabled even when th
     guidedBridgeCheck(
       "setClosingConfirmation",
       {
-        client: client(async (_name, input) => {
+        client: client(async (_name, input: { enabled: boolean }) => {
           values.push(input.enabled);
         }),
         observed: () => ({}),
@@ -890,7 +907,7 @@ test("two bridge orientation cases each start from restored state instead of the
   const observations: boolean[] = [];
   const make = () =>
     createSuite({
-      client: client(async (_name, input) => {
+      client: client(async (_name, input: { locked: boolean }) => {
         locked = input.locked;
       }),
       api: async () => {
@@ -945,7 +962,7 @@ test("two bridge orientation cases each start from restored state instead of the
 test("a refused orientation restore stops the next bridge and aggregate cleanup retries with a fresh signal", async () => {
   const values: boolean[] = [];
   const sdk = client(
-    async (_name, input, options) => {
+    async (_name, input: { locked: boolean }, options) => {
       assert.equal(options.signal.aborted, false);
       values.push(input.locked);
       return values.length === 4 ? false : undefined;
@@ -984,7 +1001,7 @@ test("a refused orientation restore stops the next bridge and aggregate cleanup 
 test("late baseline ACK after timeout cannot apply the next flag mutation after cleanup", async () => {
   const values: boolean[] = [];
   let release: () => void = () => {};
-  const sdk = client(async (_name, input) => {
+  const sdk = client(async (_name, input: { enabled: boolean }) => {
     values.push(input.enabled);
     if (values.length === 1)
       await new Promise<void>((resolve) => {

@@ -65,8 +65,8 @@
   "goVerifier": {
     "module": "github.com/LO-ink/lo-miniapp-sdk/go",
     "sourceCommit": "25d51f20a408801d7c35ed6c12007bfe402e83e4",
-    "provenance": "server/go/sdk-provenance.json",
-    "toolchain": "go1.27.1"
+    "toolchain": "go1.27.1",
+    "version": "v0.1.0"
   },
   "botContract": {
     "serverCommit": "285b2f31f809c55f22ad2cb74f6c4e035daa9926",

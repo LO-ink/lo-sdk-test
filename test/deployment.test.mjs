@@ -69,7 +69,10 @@ if (tool === "git") {
         NEW_IMAGE: image,
       },
     });
-    assert.equal(result.error, undefined);
+    if (result.error?.code === "EPIPE") {
+      // Commands refused before reading credentials can close stdin immediately.
+      assert.equal(result.status, 64);
+    } else assert.equal(result.error, undefined);
     let calls = [];
     try {
       calls = readFileSync(log, "utf8").trim().split("\n").map(JSON.parse);

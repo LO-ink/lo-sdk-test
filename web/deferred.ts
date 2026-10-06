@@ -261,7 +261,9 @@ export async function verifyDeferredData(
       signal,
     );
     if (signed.userId !== ticket.userId || signed.appId !== ticket.appId)
-      throw new Error("Эта попытка относится к другому запуску LO");
+      throw new Error("Эта попытка относится к другому запуску LO", {
+        cause: error,
+      });
     signal.throwIfAborted();
     verified?.();
     result = await probe();
