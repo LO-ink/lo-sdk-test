@@ -1,34 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync, mkdirSync, chmodSync } from "node:fs";
-import { createHash } from "node:crypto";
+import { mkdirSync, chmodSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 const root = fileURLToPath(new URL("../server/go/", import.meta.url));
-const provenance = JSON.parse(
-  readFileSync(join(root, "sdk-provenance.json"), "utf8"),
-);
-function sourceFiles(directory, prefix = "") {
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const path = prefix + entry.name;
-    if (entry.isDirectory())
-      return sourceFiles(join(directory, entry.name), path + "/");
-    if (!entry.isFile()) throw new Error("Unexpected Go SDK source entry");
-    return [path];
-  });
-}
-const actualPaths = sourceFiles(join(root, "sdk")).sort();
-if (
-  JSON.stringify(actualPaths) !==
-  JSON.stringify(Object.keys(provenance.files).sort())
-)
-  throw new Error("Go SDK source inventory changed");
-for (const [path, expected] of Object.entries(provenance.files)) {
-  const actual = createHash("sha256")
-    .update(readFileSync(join(root, "sdk", path)))
-    .digest("hex");
-  if (actual !== expected) throw new Error(`Go SDK source changed: ${path}`);
-}
 const architecture = { x64: "amd64", arm64: "arm64" }[process.arch];
 if (!architecture || !["darwin", "linux"].includes(process.platform))
   throw new Error("Unsupported verifier build platform");
@@ -46,6 +21,7 @@ for (const target of targets) {
     "go",
     [
       "build",
+      "-mod=readonly",
       "-trimpath",
       "-buildvcs=false",
       "-ldflags=-s -w",
@@ -68,5 +44,5 @@ for (const target of targets) {
   chmodSync(binary, 0o755);
 }
 console.log(
-  `Go initData verifier built from ${provenance.sourceCommit.slice(0, 7)} (${targets.size} targets).`,
+  `Go initData verifier built from the pinned module (${targets.size} targets).`,
 );

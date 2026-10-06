@@ -165,9 +165,10 @@ test("same-version source edits update only the changed package, not its monorep
   );
 });
 
-test("JS SDK freshness excludes sibling Go source but includes build inputs and package metadata", async () => {
+test("JS SDK freshness excludes Go and workflow edits but includes current build inputs and package metadata", async () => {
   for (const changedPath of [
     "go",
+    ".github/workflows/ci.yml",
     "src",
     "scripts/build.mjs",
     "package.json",
@@ -196,8 +197,8 @@ test("JS SDK freshness excludes sibling Go source but includes build inputs and 
               "tsconfig.json",
               "README.md",
               "LICENSE",
-              "CHANGELOG.md",
               "go",
+              ".github/workflows/ci.yml",
             ].map((path) => ({
               path,
               type: ["src", "go"].includes(path) ? "tree" : "blob",
@@ -213,7 +214,9 @@ test("JS SDK freshness excludes sibling Go source but includes build inputs and 
     });
     assert.equal(
       (await check()).packages[0].state,
-      changedPath === "go" ? "current" : "update",
+      ["go", ".github/workflows/ci.yml"].includes(changedPath)
+        ? "current"
+        : "update",
       changedPath,
     );
   }

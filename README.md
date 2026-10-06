@@ -1,48 +1,60 @@
 # LO SDK Test
 
-Мини-приложение для проверки SDK, мостов LO и Bot API. Стенд: [sdk-test.zay.media](https://sdk-test.zay.media).
+A mini-app for checking LO SDKs, native bridges and the Bot API. Hosted at [sdk-test.zay.media](https://sdk-test.zay.media).
 
-Кнопка «Проверить все мосты» запускает проверки и показывает текущий кейс, прогресс и отчёт. Разрешения и подтверждения появляются в этом же экране. Звук, вибрация, цвета и жесты требуют подтверждения наблюдаемого результата: успешный вызов метода сам по себе не подтверждает эффект на устройстве. Пропущенные проверки не считаются успешными. Во вкладке «Вручную» можно проверить отдельный метод.
+Run the guided checks to see progress, respond to permissions and confirmations, and download a report. Audio, vibration, colors and gestures require confirmation of the observed device effect. A successful API response alone does not establish that effect. Skipped checks remain unverified. The manual tab runs individual methods.
 
-Нативный SDK и адаптер совместимости проверяются отдельно. Ограничения текущего контракта LO показываются в отчёте. Стенд не расширяет возможности платформы.
+Native and compatibility bridges are tested independently. The report records platform limitations.
 
-## Локальный запуск
+## Local development
 
-Нужны Node.js 24 и Go. Сборка использует Go 1.27.1; Go загрузит toolchain при необходимости.
+Use Node.js 24 and Go. The build pins Go 1.27.1; Go downloads that toolchain when needed.
 
 ```sh
-npm ci --ignore-scripts
+make install
 cp .env.example .env
 chmod 600 .env
-npm test
-npm run build
+make ci
 npm start
 ```
 
-Откройте `http://127.0.0.1:5407`. Для разработки интерфейса: `npm run dev`, сервер должен работать отдельно. Для живых проверок зарегистрируйте мини-приложение и бота в LO, заполните серверные переменные из `.env.example` и укажите HTTPS-адрес приложения.
+Open http://127.0.0.1:5407. For UI development, run npm run dev with the server in a separate terminal. Live checks require an app and bot registered in LO, the server settings from .env.example, and an HTTPS app URL.
 
-Без настроек LO доступны интерфейс и проверки, не требующие запуска из LO. Пустые поля окружения не заменяются фиктивными ключами. Не помещайте ключи в `VITE_*`: такие переменные доступны браузеру.
+Without LO credentials, the interface and checks independent of a signed LO launch remain available. Empty environment fields are never replaced with fake keys. Keep secrets out of VITE_* variables, which are exposed to the browser.
 
-## Зависимости и проверки
+## Verification
 
-SDK устанавливаются из публичного npm с точными версиями. `package-lock.json` фиксирует архивы и их integrity; `public/sdk-build.json` связывает отображаемые версии с исходными ревизиями. Проверки сверяют манифест с установленными пакетами.
+SDKs are installed from npm at exact versions. package-lock.json records archive integrity; public/sdk-build.json records their source revisions. Tests compare this manifest with the installed packages.
 
-При создании сессии подпись запуска независимо проверяют Node и Go. При отказе или расхождении результатов сессия не выдаётся. Go SDK хранится в `server/go/sdk`; сборка проверяет его исходники по `server/go/sdk-provenance.json`. Ключи и данные запуска передаются проверяющему процессу через stdin и не включаются в отчёты.
+Node and Go independently verify each signed launch before issuing a session. A rejection or disagreement prevents authentication. The Go SDK is installed from its published module version and checked by go.sum. App keys and launch data reach the verifier over stdin and stay out of reports.
 
 ```sh
-npm test
-npm run format:check
-npm run build
+make ci
 docker build --platform linux/amd64 -t lo-sdk-test:local .
-npm run test:container -- lo-sdk-test:local
+make container IMAGE=lo-sdk-test:local
 ```
 
-Контейнер работает от пользователя `node`, с файловой системой только для чтения. Проверка контейнера проверяет старт сервера, Go verifier и идентификатор сборки.
+The container runs as node with a read-only filesystem. Its smoke test verifies server startup, the Go verifier and the build identity.
 
-## Выкладка
+## Deployment
 
-После слияния в `main` GitHub Actions проверяет код, собирает и запускает контейнер, публикует этот же образ в GHCR и развёртывает его на сервере по digest. После проверки здоровья и публичного `/release.json` новая сборка считается установленной. При ошибке возвращается предыдущий образ.
+After a merge into main, GitHub Actions verifies code, builds and runs the container, publishes that exact image to GHCR, and deploys by digest. Health and public /release.json checks establish the installed revision. Failed deployment restores the previous image.
 
-Проверки pull request не получают доступ к серверу. Ключи LO хранятся только на сервере. SSH-ключ деплоя разрешает один ограниченный сценарий; долгоживущий токен GHCR не нужен. Настройка инфраструктуры и восстановление описаны в [deploy/README.md](deploy/README.md).
+Pull-request checks have no server access. LO credentials stay on the server. A restricted SSH command handles deployment, using an ephemeral GHCR credential. See [deployment and recovery](deploy/README.md).
 
-Лицензия: MIT. Лицензия включённого Go SDK сохранена отдельно.
+License: [MIT](LICENSE).
+
+## Quality checks
+
+Run `make install` and `make ci` with Node.js 22.13 or newer. The same targets run
+in GitHub Actions. CI checks formatting, ESLint (including typed promises),
+TypeScript, dependency cycles and package boundaries, tests, published package
+contents, vulnerable dependencies and secrets. English documentation and comments
+are enforced; unfinished development notes and retired repository URLs fail CI.
+
+Coverage includes unimported production files and fails below 70% lines and
+statements, 70% functions, or 70% branches. Reports are uploaded as CI artifacts.
+
+`make go-ci` checks the launch verifier with race tests, static analysis, at least
+85% statement coverage and vulnerability scanning. `make container` verifies the
+release image using `BUILD_REVISION` from the commit being deployed.

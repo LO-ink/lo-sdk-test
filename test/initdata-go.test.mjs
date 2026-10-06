@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
@@ -11,15 +11,33 @@ import {
   GoVerifierUnavailable,
 } from "../server/initdata-go.mjs";
 
-const vectors = JSON.parse(
-  await readFile(
-    new URL(
-      "../server/go/sdk/initdata/testdata/initdata.json",
-      import.meta.url,
-    ),
-    "utf8",
-  ),
-);
+const fixture = {
+  appKey: "synthetic-app-key",
+  appId: "test-app",
+  maxAgeSec: 3600,
+  nowSec: 1800000000,
+};
+const fields = new URLSearchParams({
+  app_id: fixture.appId,
+  auth_date: String(fixture.nowSec),
+  user: JSON.stringify({ id: "9007199254740993", first_name: "Unicode 🌍" }),
+});
+const { createHmac } = await import("node:crypto");
+const secret = createHmac("sha256", "WebAppData")
+  .update(fixture.appKey)
+  .digest();
+const check = [...fields.entries()]
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([k, v]) => `${k}=${v}`)
+  .join("\n");
+fields.set("hash", createHmac("sha256", secret).update(check).digest("hex"));
+const vectors = [
+  {
+    ...fixture,
+    raw: fields.toString(),
+    expected: { user: { id: "9007199254740993" }, authDate: fixture.nowSec },
+  },
+];
 const vector = vectors.find((item) => item.expected?.user?.id);
 const options = {
   appKey: vector.appKey,

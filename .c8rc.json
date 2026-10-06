@@ -1,0 +1,12 @@
+{
+  "all": true,
+  "include": ["web/**/*.{ts,tsx}", "server/**/*.mjs"],
+  "exclude": ["**/*.d.ts"],
+  "extension": [".js", ".mjs", ".ts", ".tsx"],
+  "reporter": ["text", "json-summary", "lcov"],
+  "check-coverage": true,
+  "lines": 70,
+  "statements": 70,
+  "functions": 70,
+  "branches": 70
+}

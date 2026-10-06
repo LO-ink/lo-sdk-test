@@ -1,6 +1,6 @@
 import type { MiniAppClient, MiniAppOperation } from "@lo-ink/miniapp-sdk";
 import { cases, events, operationNames } from "./cases.ts";
-import { bounded, pause, type Check, type CheckOutcome } from "./runner.ts";
+import { bounded, pause, type Check } from "./runner.ts";
 import type { WriteAccessResult } from "./consent.ts";
 import type { Interact } from "./interaction.ts";
 import type { AudioStart } from "./audio.ts";
@@ -53,6 +53,7 @@ export function createSuite(context: SuiteContext) {
       if (cloud)
         throw new Error(
           `${name}: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
         );
       throw error;
     } finally {

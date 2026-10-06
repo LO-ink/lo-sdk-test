@@ -1,35 +1,35 @@
-# Деплой LO SDK Test
+# Deploying LO SDK Test
 
-Workflow `.github/workflows/ci.yml` проверяет pull request. После слияния в `main` он публикует прошедший проверки контейнер и развёртывает его по неизменяемому digest. Ручной запуск workflow также разрешён только для текущего `main`.
+The ci.yml workflow verifies pull requests. A main-branch merge publishes the tested container and deploys it by immutable digest. Manual deployment workflows also require main.
 
-## Однократная настройка сервера
+## Server setup
 
-1. Установите Docker Compose, git, curl, Python 3 и flock. Подключите внешнюю сеть `traefik-public` и DNS/TLS для адреса в `compose.vps.yml`.
-2. Создайте `/opt/lo-sdk-test/runtime.env` с переменными из `.env.example`, доступными только администратору. Этот файл не передаётся через GitHub.
-3. Установите `compose.vps.yml` как `/opt/lo-sdk-test/compose.yml`, `release.sh` как root-owned `/usr/local/sbin/lo-sdk-test-deploy` с режимом 0755. Изменения этого root-скрипта устанавливаются администратором после ревью.
-4. Создайте пользователя `lo-sdk-deploy` с заблокированным паролем, без группы Docker. Разрешите sudo только для `/usr/local/sbin/lo-sdk-test-deploy`.
-5. Для отдельного ключа GitHub установите forced command в `authorized_keys`:
+1. Install Docker Compose, git, curl, Python 3 and flock. Configure the traefik-public network and DNS/TLS for the hostname in compose.vps.yml.
+2. Create /opt/lo-sdk-test/runtime.env from .env.example with administrator-only access. This file never passes through GitHub.
+3. Install compose.vps.yml as /opt/lo-sdk-test/compose.yml and release.sh as root-owned /usr/local/sbin/lo-sdk-test-deploy, mode 0755. An administrator reviews and installs updates to this script.
+4. Create lo-sdk-deploy with a locked password and no Docker group membership. Grant sudo only for /usr/local/sbin/lo-sdk-test-deploy.
+5. Restrict the dedicated deployment key in authorized_keys:
 
 ```text
 restrict,command="sudo -n /usr/local/sbin/lo-sdk-test-deploy \"$SSH_ORIGINAL_COMMAND\"" ssh-ed25519 <public key>
 ```
 
-6. В environment `production` репозитория разрешите только ветку `main`. Добавьте secrets `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` (проверенный ключ SSH сервера), variables `DEPLOY_HOST`, `DEPLOY_USER`.
-7. Перед первой автоматической выкладкой должен работать контейнер `web` в compose-проекте `lo-sdk-test`: он станет первой точкой отката. Зафиксируйте его образ в `deployment.env` как `SDK_TEST_IMAGE=...`.
+6. Restrict the repository's production environment to main. Configure DEPLOY_SSH_KEY and verified DEPLOY_KNOWN_HOSTS secrets, plus DEPLOY_HOST and DEPLOY_USER variables.
+7. Before the first automatic deployment, start the web container in the lo-sdk-test Compose project. Record its image as SDK_TEST_IMAGE in deployment.env so recovery has a known previous image.
 
-GHCR может оставаться приватным. На сервер передаётся краткоживущий `GITHUB_TOKEN` с правом чтения пакетов через зашифрованный stdin; временный Docker config удаляется после загрузки образа. Пакет связан с репозиторием меткой OCI source. Отдельный постоянный токен реестра на сервере не хранится.
+GHCR may remain private. A short-lived GITHUB_TOKEN with package-read permission travels over encrypted stdin; the temporary Docker configuration is removed after pulling. The OCI source label associates the package with its repository.
 
-## Проверка и откат
+## Verification and recovery
 
-Скрипт принимает только `deploy sha256:<digest> <40-character commit> <GitHub actor>`, сверяет текущий `main` и метки образа. Устаревшие задачи пропускаются. Блокировка исключает параллельное переключение контейнера. Если GitHub недоступен, выкладка завершается ошибкой до переключения.
+The script accepts only `deploy sha256:<digest> <40-character commit> <GitHub actor>`. It verifies main and image labels, skips stale jobs and serializes container replacement with a lock. A GitHub failure stops deployment before replacement.
 
-Проверяется здоровье нового контейнера и ревизия на публичном HTTPS-адресе. Ошибка возвращает предыдущий образ. Успешный digest и commit записываются в `/opt/lo-sdk-test/current-release.json`; `deployment.env` содержит текущий образ. Для административных compose-команд используйте этот env-файл:
+The new container must pass health checks and report the expected revision over public HTTPS. Failure restores the previous image. Successful digest and commit are recorded in /opt/lo-sdk-test/current-release.json; deployment.env records the current image. Use that environment file for administrative Compose commands:
 
 ```sh
 cd /opt/lo-sdk-test
 docker compose --env-file deployment.env -f compose.yml ps
 ```
 
-Для экстренного ручного отката администратор может указать сохранённый digest или локальный предыдущий образ через `SDK_TEST_IMAGE` и выполнить `docker compose -p lo-sdk-test -f compose.yml up -d --no-deps --wait web`. Другие сервисы не перезапускаются. После ручного отката обновите `deployment.env` и проверьте `/release.json`.
+For emergency recovery, set SDK_TEST_IMAGE to a saved digest or previous local image and run `docker compose -p lo-sdk-test -f compose.yml up -d --no-deps --wait web`. Update deployment.env and check /release.json afterwards.
 
-Смена DNS, runtime.env, Traefik или root-скрипта относится к настройке инфраструктуры, а не к автоматической выкладке приложения. Не удаляйте предыдущий образ до подтверждения новой версии.
+DNS, runtime.env, Traefik and the root-owned deployment script are infrastructure settings. Retain the previous image until the new deployment is confirmed.

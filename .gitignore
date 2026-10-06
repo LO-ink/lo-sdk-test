@@ -10,3 +10,16 @@ server/go/bin/
 *.key
 *.pem
 .DS_Store
+coverage/
+.venv/
+.ruff_cache/
+.mypy_cache/
+
+.coverage
+.coverage.*
+**/*.egg-info/
+**/build/
+
+coverage-go.out
+
+coverage-go.txt
