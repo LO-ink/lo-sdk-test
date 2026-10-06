@@ -408,8 +408,8 @@ test("native SDK upgrades and schema-less historical reports cannot relabel old 
   saveRun(store, before, "0.4.26", dependencies);
   assert.deepEqual(readRun(store, dependencies), before);
   const priorDependencies = dependencies.replace(
-    "@lo-ink/miniapp-sdk@0.22.0",
-    "@lo-ink/miniapp-sdk@0.21.1",
+    /@lo-ink\/miniapp-sdk@[^|]+/,
+    (current) => `${current}-historical`,
   );
   assert.notEqual(priorDependencies, dependencies);
   saveRun(store, before, "0.4.25", priorDependencies);

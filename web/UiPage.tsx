@@ -1,6 +1,7 @@
 import { useState, useRef, type ReactNode } from "react";
 import {
   AppIcon,
+  Tabs,
   Surface,
   Dialog,
   TextArea,
@@ -37,6 +38,7 @@ const iconSource = "/demo-app-icon.svg";
 
 export function UiPage() {
   const [theme, setTheme] = useState<"host" | "light" | "dark">("host");
+  const [selectedTab, setSelectedTab] = useState("first");
   const [clicks, setClicks] = useState(0);
   const [name, setName] = useState("");
   const [notifications, setNotifications] = useState(true);
@@ -128,8 +130,25 @@ export function UiPage() {
             </Text>
           </Stack>
         </Section>
+        <Section name="Tabs">
+          <Tabs
+            aria-label="Пример вкладок"
+            value={selectedTab}
+            onValueChange={setSelectedTab}
+            options={[
+              { value: "first", label: "Первая" },
+              { value: "second", label: "Длинное название вкладки" },
+              { value: "third", label: "Третья" },
+              { value: "disabled", label: "Недоступная", disabled: true },
+            ]}
+          />
+          <Text size="caption" role="status">
+            Выбрана: {selectedTab}
+          </Text>
+        </Section>
         <Section name="TextField">
           <Stack gap={4}>
+            <TextField label="Поиск" variant="search" placeholder="Поиск" />
             <TextField
               label="Название"
               placeholder="Введите название"

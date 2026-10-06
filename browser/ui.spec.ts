@@ -12,11 +12,11 @@ for (const scheme of ["light", "dark"] as const) {
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.goto("/");
-    const manual = page.getByRole("button", { name: "Вручную", exact: true });
+    const manual = page.getByRole("tab", { name: "Вручную", exact: true });
     await manual.hover();
     expect(
-      await manual.evaluate((element) =>
-        element.classList.contains("lo-ui-button--quiet"),
+      await manual.evaluate(
+        (element) => element.getAttribute("aria-selected") === "false",
       ),
     ).toBe(true);
     expect(
@@ -25,20 +25,20 @@ for (const scheme of ["light", "dark"] as const) {
       ),
     ).not.toBe("rgb(80, 96, 232)");
     await manual.click();
-    await page.getByRole("button", { name: "Бот", exact: true }).hover();
+    await page.getByRole("tab", { name: "Бот", exact: true }).hover();
     expect(
       await page
-        .getByRole("button", { name: "Бот", exact: true })
-        .evaluate((element) =>
-          element.classList.contains("lo-ui-button--secondary"),
+        .getByRole("tab", { name: "Бот", exact: true })
+        .evaluate(
+          (element) => element.getAttribute("aria-selected") === "false",
         ),
     ).toBe(true);
-    await page.getByRole("button", { name: "UI", exact: true }).click();
+    await page.getByRole("tab", { name: "UI", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "UI компоненты" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("group", { name: "Ручные проверки" }),
+      page.getByRole("tablist", { name: "Ручные проверки" }),
     ).toHaveCount(0);
     const host = await page.locator("html").evaluate((element) => ({
       theme: element.dataset.loTheme,
@@ -106,8 +106,8 @@ for (const scheme of ["light", "dark"] as const) {
     await expect(
       page.getByText("Пример создан", { exact: true }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Проверка", exact: true }).focus();
-    await page.keyboard.press("Tab");
+    await page.getByRole("tab", { name: "UI", exact: true }).focus();
+    await page.keyboard.press("ArrowLeft");
     await expect(manual).toBeFocused();
     const focus = await manual.evaluate((element) => {
       const style = getComputedStyle(element);
@@ -117,8 +117,8 @@ for (const scheme of ["light", "dark"] as const) {
         width: style.outlineWidth,
       };
     });
-    expect(focus).toEqual({ style: "solid", offset: "2px", width: "3px" });
-    await page.getByRole("button", { name: "UI", exact: true }).click();
+    expect(focus).toEqual({ style: "solid", offset: "-3px", width: "3px" });
+    await page.getByRole("tab", { name: "UI", exact: true }).click();
     await page.getByRole("button", { name: "Открыть диалог" }).click();
     const dialog = page.getByRole("dialog", { name: "Пример диалога" });
     await expect(dialog).toBeVisible();
@@ -213,5 +213,171 @@ test("SDK appearance binding selects the published UI theme and canvas", async (
   expect(result).toEqual({
     dark: { theme: "dark", canvas: "#0b0e17", text: "rgb(247, 251, 255)" },
     light: { theme: "light", canvas: "#f7fbff", text: "rgb(18, 22, 36)" },
+  });
+});
+
+test("manual filters retain whole labels, field geometry and text/action gaps", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ status: 503, json: {} }),
+  );
+  await page.goto("/");
+  await page.getByRole("tab", { name: "Вручную", exact: true }).click();
+  const row = page.getByRole("tablist", { name: "Группы проверок" });
+  expect(await row.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
+  for (const tab of await row.getByRole("tab").all()) {
+    expect(
+      await tab.evaluate((e) => ({
+        height: e.getBoundingClientRect().height,
+        wrap: getComputedStyle(e).whiteSpace,
+      })),
+    ).toEqual({ height: 44, wrap: "nowrap" });
+  }
+  expect(
+    await page
+      .locator("#sdk-sections")
+      .evaluate((e) => getComputedStyle(e).borderBottomWidth),
+  ).toBe("0px");
+  expect(
+    await page.locator(".app").evaluate((e) => getComputedStyle(e).paddingLeft),
+  ).toBe("10px");
+  const search = page.getByRole("textbox", { name: "Найти проверку" });
+  expect(
+    await search.evaluate((e) => ({
+      height: e.getBoundingClientRect().height,
+      radius: getComputedStyle(e).borderRadius,
+    })),
+  ).toEqual({ height: 38, radius: "6px" });
+  await page.getByRole("tab", { name: "Данные запуска", exact: true }).click();
+  const note = page.getByText("Сырая строка и ключи не входят в отчёт.");
+  const button = page.getByRole("button", { name: "Проверить подпись" });
+  const textBounds = await note.boundingBox(),
+    buttonBounds = await button.boundingBox();
+  expect(
+    buttonBounds!.y - textBounds!.y - textBounds!.height,
+  ).toBeGreaterThanOrEqual(12);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
+    320,
+  );
+});
+test("touch swipes change main sections, preserve manual selection, and stop at boundaries", async ({
+  page,
+}) => {
+  await page.route("**/api/**", (route) =>
+    route.fulfill({ status: 503, json: {} }),
+  );
+  await page.goto("/");
+  const swipe = async (dx: number, dy = 0) =>
+    page.locator("#sdk-panel").evaluate(
+      (panel, { dx, dy }) => {
+        const touch = (x: number, y: number) =>
+          new Touch({ identifier: 1, target: panel, clientX: x, clientY: y });
+        const initial = touch(200, 100),
+          final = touch(200 + dx, 100 + dy);
+        panel.dispatchEvent(
+          new TouchEvent("touchstart", {
+            bubbles: true,
+            touches: [initial],
+            changedTouches: [initial],
+          }),
+        );
+        panel.dispatchEvent(
+          new TouchEvent("touchmove", {
+            bubbles: true,
+            cancelable: true,
+            touches: [final],
+            changedTouches: [final],
+          }),
+        );
+        panel.dispatchEvent(
+          new TouchEvent("touchend", {
+            bubbles: true,
+            touches: [],
+            changedTouches: [final],
+          }),
+        );
+      },
+      { dx, dy },
+    );
+  await swipe(-100);
+  await expect(
+    page.getByRole("tab", { name: "Вручную", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Журнал", exact: true }).click();
+  await swipe(-100);
+  await expect(
+    page.getByRole("tab", { name: "UI", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await swipe(-100);
+  await expect(
+    page.getByRole("tab", { name: "UI", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await swipe(100);
+  await expect(
+    page.getByRole("tab", { name: "Журнал", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await swipe(100, 150);
+  await expect(
+    page.getByRole("tab", { name: "Вручную", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+});
+
+test.describe("native touch arbitration", () => {
+  test.use({
+    hasTouch: true,
+    isMobile: true,
+    viewport: { width: 320, height: 720 },
+  });
+  test("horizontal filters scroll while content swipes switch sections and vertical gestures scroll", async ({
+    page,
+  }) => {
+    await page.route("**/api/**", (route) =>
+      route.fulfill({ status: 503, json: {} }),
+    );
+    await page.goto("/");
+    await page.getByRole("tab", { name: "Вручную", exact: true }).click();
+    const session = await page.context().newCDPSession(page);
+    const touch = async (x: number, y: number, dx: number, dy = 0) => {
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ x, y }],
+      });
+      for (let step = 1; step <= 8; step++) {
+        await session.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ x: x + (dx * step) / 8, y: y + (dy * step) / 8 }],
+        });
+        await page.waitForTimeout(20);
+      }
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
+    };
+    const filters = page.getByRole("tablist", { name: "Группы проверок" });
+    const row = (await filters.boundingBox())!;
+    await touch(260, row.y + row.height / 2, -180);
+    await expect
+      .poll(() => filters.evaluate((e) => e.scrollLeft))
+      .toBeGreaterThan(50);
+    await expect(
+      page.getByRole("tab", { name: "Вручную", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    const heading = (await page
+      .locator("#sdk-panel .section-heading")
+      .boundingBox())!;
+    await touch(260, heading.y + 10, -160);
+    await expect(
+      page.getByRole("tab", { name: "UI", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
+    await touch(20, 600, 0, -220);
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeGreaterThan(50);
+    await expect(
+      page.getByRole("tab", { name: "UI", exact: true }),
+    ).toHaveAttribute("aria-selected", "true");
   });
 });
