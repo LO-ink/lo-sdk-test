@@ -850,6 +850,9 @@ export function createSuite(context: SuiteContext) {
             mutations.delete(
               name.replace(/^stop/, "start") as MiniAppOperation,
             );
+            if (name === "closeQrScanner") mutations.delete("openQrScanner");
+            if (name === "exitFullscreen")
+              mutations.delete("requestFullscreen");
             context.checkpoint?.();
           }
         } catch {
@@ -874,8 +877,12 @@ export function createSuite(context: SuiteContext) {
         await restore("updateBiometryToken", { token: "" });
       if (mutations.has("openQrScanner"))
         await restore("closeQrScanner", undefined);
-      if (mutations.has("requestFullscreen") && !original?.isFullscreen)
-        await restore("exitFullscreen", undefined);
+      if (mutations.has("requestFullscreen")) {
+        if (original?.isFullscreen) {
+          mutations.delete("requestFullscreen");
+          context.checkpoint?.();
+        } else await restore("exitFullscreen", undefined);
+      }
       for (const [name, color] of [
         ["setHeaderColor", original?.theme?.headerBackground],
         ["setBackgroundColor", original?.theme?.background],

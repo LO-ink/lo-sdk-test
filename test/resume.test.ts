@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canResume,
+  hasRecoveryDebt,
   runChecks,
   type Check,
   type CheckResult,
@@ -173,6 +174,7 @@ test("reopening distinguishes interrupted actions from untouched future steps an
   assert.equal(first.checks[2].interrupted, undefined);
   assert.equal(first.state, "cancelled");
   assert.deepEqual(first.recovery, before.recovery);
+  assert.equal(hasRecoveryDebt(first), true);
   assert.equal(canResume(first), true);
   saveRun(store, first, "0.4.22", dependencies);
   const second = readRun(store, dependencies)!;
@@ -404,4 +406,20 @@ test("expired bot resources remain unverified, and interrupted sends require a s
     .execute(new AbortController().signal);
   assert.match(warning, /мог уже выполнить/);
   assert.equal(typeof outcome === "object" && outcome.state, "manual");
+});
+
+test("successful inverse cleanup retires scanner and fullscreen intents without exiting an originally fullscreen host", async () => {
+  for (const isFullscreen of [false, true]) {
+    const { suite, calls } = suiteFixture([], {
+      key: `lo-sdk-run-${id}-native`,
+      written: [],
+      mutations: ["openQrScanner", "requestFullscreen"],
+      original: { isFullscreen },
+    });
+    await suite.cleanup.execute(new AbortController().signal);
+    assert.equal(calls.includes("closeQrScanner"), true);
+    assert.equal(calls.includes("exitFullscreen"), !isFullscreen);
+    assert.deepEqual(suite.checkpoint().mutations, []);
+    assert.equal(suite.cleanup.skip?.()?.state, "skipped");
+  }
 });

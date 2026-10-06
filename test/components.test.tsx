@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { JSDOM } from "jsdom";
+import type { RunReport } from "../web/runner.ts";
 import type { InteractionView } from "../web/interaction.ts";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -445,4 +446,60 @@ test("a stopped guided run reopens with Continue, preserves completed rows and c
   await waitFor(() =>
     assert.ok(page.getByRole("button", { name: "Продолжить проверку" })),
   );
+});
+
+test("a crash-restored cleanup ledger prevents replacing the run even without a failed cleanup flag", async () => {
+  versionsUnavailable();
+  const report: RunReport = {
+    id: "11111111-1111-4111-8111-111111111111",
+    startedAt: new Date().toISOString(),
+    state: "cancelled",
+    checks: [
+      {
+        id: "next",
+        label: "Next",
+        group: "fixture",
+        state: "cancelled",
+        detail: "Interrupted",
+        durationMs: 1,
+      },
+    ],
+    recovery: {
+      native: {
+        key: "lo-sdk-run-11111111-1111-4111-8111-111111111111-native",
+        written: [],
+        mutations: ["startAccelerometer"],
+        original: {},
+      },
+    },
+  };
+  let started = 0;
+  let continued = 0;
+  const page = render(
+    <RunPage
+      report={report}
+      interaction={null}
+      starting={false}
+      stopping={false}
+      exporting={false}
+      onStart={() => {
+        started++;
+      }}
+      onResume={() => {
+        continued++;
+      }}
+      onStop={() => {}}
+      onExport={() => {}}
+      onDeferred={() => {}}
+    />,
+  );
+  fireEvent.click(page.getByRole("button", { name: "Начать заново" }));
+  assert.equal(started, 0);
+  assert.equal(
+    (page.getByRole("button", { name: "Начать заново" }) as HTMLButtonElement)
+      .disabled,
+    true,
+  );
+  fireEvent.click(page.getByRole("button", { name: "Продолжить проверку" }));
+  assert.equal(continued, 1);
 });

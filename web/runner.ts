@@ -115,12 +115,15 @@ export const unfinished = (check: CheckResult) =>
   check.state === "pending" ||
   check.state === "running" ||
   check.state === "cancelled";
+export function hasRecoveryDebt(report: RunReport | null): boolean {
+  return Object.values(report?.recovery ?? {}).some(
+    (entry) => entry.written.length > 0 || entry.mutations.length > 0,
+  );
+}
 export function canResume(report: RunReport | null): report is RunReport {
   if (!report || report.state === "running") return false;
-  const debt = Object.values(report.recovery ?? {}).some(
-    (entry) => entry.written.length || entry.mutations.length,
-  );
-  if (report.resumeBlocked) return debt;
+  if (hasRecoveryDebt(report)) return true;
+  if (report.resumeBlocked) return false;
   return (
     report.state === "cancelled" &&
     report.checks.some((check) => check.id !== "cleanup" && unfinished(check))

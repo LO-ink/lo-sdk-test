@@ -4,6 +4,7 @@ import { SdkVersions } from "./SdkVersions.tsx";
 import {
   bridgeCoverage,
   canResume,
+  hasRecoveryDebt,
   summarize,
   type CheckResult,
   type RunReport,
@@ -134,7 +135,7 @@ export function RunPage({
             </p>
             <Button
               variant="secondary"
-              disabled={Boolean(interaction) || report?.resumeBlocked}
+              disabled={Boolean(interaction) || hasRecoveryDebt(report)}
               onClick={onStart}
             >
               Начать заново
@@ -146,7 +147,7 @@ export function RunPage({
             Не удалось продолжить: {report.resumeError}
           </p>
         )}
-        {report?.resumeBlocked && !active && (
+        {(report?.resumeBlocked || hasRecoveryDebt(report)) && !active && (
           <p className="note">
             {resumable
               ? "Восстановление после остановки не подтверждено. При продолжении сначала повторим очистку; готовые результаты останутся."

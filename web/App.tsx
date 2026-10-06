@@ -14,6 +14,7 @@ import {
   bounded,
   canResume,
   matchesPlan,
+  hasRecoveryDebt,
   bridgeCoverage,
   runChecks,
   summarize,
@@ -21,10 +22,10 @@ import {
   type RunReport,
 } from "./runner.ts";
 import { createSuite } from "./suite.ts";
-import { beginWriteAccess } from "./consent.ts";
+import { beginWriteAccess, type WriteAccessResult } from "./consent.ts";
 import sdkBuild from "../public/sdk-build.json";
 import { version as appVersion } from "../package.json";
-import { beginAudio } from "./audio.ts";
+import { beginAudio, type AudioStart } from "./audio.ts";
 import { createInteraction, type InteractionView } from "./interaction.ts";
 import { availableBridges } from "./bridges.ts";
 import { guidedBridgeCheck } from "./bridge-checks.ts";
@@ -375,13 +376,7 @@ export function App() {
       Object.values(results).some((r) => r.state === "running")
     )
       return;
-    if (
-      !resume &&
-      automatedRunRef.current?.resumeBlocked &&
-      Object.values(automatedRunRef.current.recovery ?? {}).some(
-        (entry) => entry.written.length || entry.mutations.length,
-      )
-    ) {
+    if (!resume && hasRecoveryDebt(automatedRunRef.current)) {
       setExportMessage(
         "Сначала восстановите состояние прежнего прогона кнопкой продолжения. Новый запуск не должен потерять незавершённую очистку.",
       );
@@ -413,12 +408,20 @@ export function App() {
       /* Run identity also fences old tickets. */
     }
     runEvents.current = {};
-    const audioStarted = beginAudio(audio.current);
+    let resolveAudio!: (value: AudioStart | PromiseLike<AudioStart>) => void;
+    const audioStarted = new Promise<AudioStart>((resolve) => {
+      resolveAudio = resolve;
+    });
+    let resolveWrite!: (
+      value: WriteAccessResult | PromiseLike<WriteAccessResult>,
+    ) => void;
     const writeAccess =
       includeBot &&
       configuration?.botConfigured !== false &&
       runClient?.supports("requestWriteAccess")
-        ? beginWriteAccess(runClient, controller.signal)
+        ? new Promise<WriteAccessResult>((resolve) => {
+            resolveWrite = resolve;
+          })
         : undefined;
     setStartingRun(true);
     setStoppingRun(false);
@@ -523,11 +526,7 @@ export function App() {
               ? check.id.slice(bridge.id.length + 1)
               : check.id,
           })),
-        recovery:
-          previous?.checks.find((check) => check.id === "cleanup")?.state !==
-          "passed"
-            ? previous?.recovery?.[bridge.id]
-            : undefined,
+        recovery: previous?.recovery?.[bridge.id],
         checkpoint: () => {
           if (latestReport) publishReport(latestReport);
         },
@@ -608,6 +607,9 @@ export function App() {
         throw new Error(
           "Набор проверок изменился. Сохранённый отчёт доступен; начните новый прогон.",
         );
+      resolveAudio(beginAudio(audio.current));
+      if (writeAccess && runClient)
+        resolveWrite(beginWriteAccess(runClient, controller.signal));
       await runChecks(plan, cleanup, controller.signal, publishReport, 12000, {
         id: runId,
         ...(previous
