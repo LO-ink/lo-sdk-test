@@ -628,3 +628,119 @@ test("the application exposes the UI page separately from manual checks", async 
   fireEvent.click(page.getByRole("button", { name: "Вручную" }));
   assert.ok(page.getByRole("group", { name: "Ручные проверки" }));
 });
+
+test("Secretary first proposal is explicit and review receipt does not claim sent", async () => {
+  const { SecretaryPage } = await import("../web/SecretaryPage.tsx");
+  const calls: unknown[] = [];
+  const flow = {
+    configured: true,
+    runId: "synthetic-run",
+    botId: "1000000000000042",
+    ownerId: "17",
+    peerId: "42",
+    connectionVerified: true,
+    incomingReceived: true,
+    reply: "Synthetic review reply",
+    attempted: false,
+  };
+  const page = render(
+    <SecretaryPage
+      authenticated
+      request={async (_path, body) => {
+        calls.push(body);
+        return calls.length === 1
+          ? flow
+          : {
+              ...flow,
+              attempted: true,
+              outcome: "received",
+              draft: { state: "draft" },
+            };
+      }}
+    />,
+  );
+  const create = await page.findByRole("button", {
+    name: "Создать черновик для проверки в LO",
+  });
+  assert.equal(
+    page.queryByRole("button", { name: "Повторить точный запрос" }),
+    null,
+  );
+  assert.equal(
+    page.queryByText("Одобрение и отправка подтверждены сервером"),
+    null,
+  );
+  fireEvent.click(create);
+  await page.findByText("Черновик подтверждён сервером");
+  assert.deepEqual(calls[1], { action: "propose", runId: "synthetic-run" });
+  assert.equal(
+    page.queryByText("Одобрение и отправка подтверждены сервером"),
+    null,
+  );
+});
+
+test("Secretary unknown outcome offers only same-key retry and signout hides pending results", async () => {
+  const { SecretaryPage } = await import("../web/SecretaryPage.tsx");
+  const flow = {
+    configured: true,
+    runId: "synthetic-run",
+    incomingReceived: true,
+    attempted: true,
+    outcome: "unavailable",
+  };
+  let finish: ((value: typeof flow) => void) | undefined;
+  const request = async (_path: string, body: unknown) =>
+    (body as { action: string }).action === "status"
+      ? flow
+      : new Promise<typeof flow>((resolve) => {
+          finish = resolve;
+        });
+  const page = render(<SecretaryPage authenticated request={request} />);
+  fireEvent.click(
+    await page.findByRole("button", { name: "Повторить точный запрос" }),
+  );
+  page.rerender(<SecretaryPage authenticated={false} request={request} />);
+  finish?.(flow);
+  await waitFor(() =>
+    assert.equal(
+      page.queryByText("Предлагаемый ответ в этот же тестовый диалог:"),
+      null,
+    ),
+  );
+});
+
+test("a first lost Secretary proposal response becomes an uncertain same-key retry", async () => {
+  const { SecretaryPage } = await import("../web/SecretaryPage.tsx");
+  const flow = {
+    configured: true,
+    runId: "synthetic-run",
+    incomingReceived: true,
+    attempted: false,
+  };
+  let attempted = false;
+  const request = async (_path: string, body: unknown) => {
+    if ((body as { action: string }).action === "propose") {
+      attempted = true;
+      throw new Error("Synthetic lost response");
+    }
+    return attempted
+      ? { ...flow, attempted: true, outcome: "unavailable" }
+      : flow;
+  };
+  const page = render(<SecretaryPage authenticated request={request} />);
+  fireEvent.click(
+    await page.findByRole("button", {
+      name: "Создать черновик для проверки в LO",
+    }),
+  );
+  await page.findByRole("button", { name: "Повторить точный запрос" });
+  await page.findByText(/Результат сейчас неизвестен/);
+  assert.equal(
+    page.queryByRole("button", { name: "Создать черновик для проверки в LO" }),
+    null,
+  );
+  assert.equal(
+    page.queryByText("Одобрение и отправка подтверждены сервером"),
+    null,
+  );
+});

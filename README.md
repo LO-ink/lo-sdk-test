@@ -91,3 +91,8 @@ LO Pro UI, Display and Mono are loaded from the design-tokens package. The
 application does not provide its own font or control appearance. ESLint requires
 SDK primitives for controls and typography; native semantic markup is retained
 for report disclosures, tables, file timestamps and page structure.
+
+## Secretary integration check
+
+The [dedicated Secretary flow](docs/secretary.md) verifies owner-scoped incoming,
+review draft and server sending evidence without sharing a working bot consumer.

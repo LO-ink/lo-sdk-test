@@ -790,3 +790,32 @@ test("all cookies for one user share the bot budget, including resume rotation a
   );
   assert.equal(calls.length, 4);
 });
+
+test("secretary route requires signed owner and rejects foreign origins before any bot I/O", async (t) => {
+  const request = await fixture(t, {
+    LO_SECRETARY_TEST_TOKEN: "1000000000000042:synthetic-test-token",
+    LO_SECRETARY_TEST_OWNER_ID: "17",
+    LO_SECRETARY_TEST_PEER_ID: "42",
+    LO_SECRETARY_TEST_CONNECTION_ID: "0d4d194e-3b2d-4c46-a2b0-55b4be56d9c0",
+    LO_SECRETARY_TEST_STATE: "/synthetic-not-opened/state.json",
+    LO_SECRETARY_TEST_EXCLUSIVE_POLL: "true",
+  });
+  assert.equal(
+    (await request("/api/secretary", { action: "start" })).status,
+    401,
+  );
+  const login = await request("/api/session", { raw: signed() });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  assert.equal(
+    (await request("/api/secretary", { action: "start" }, cookie)).status,
+    403,
+  );
+  assert.equal(
+    (
+      await request("/api/secretary", { action: "start" }, cookie, {
+        origin: "https://evil.example.test",
+      })
+    ).status,
+    403,
+  );
+});

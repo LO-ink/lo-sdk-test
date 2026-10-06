@@ -8,6 +8,8 @@ services:
     environment:
       PORT: "5407"
       BIND_ADDRESS: 0.0.0.0
+    volumes:
+      - secretary-state:/var/lib/lo-sdk-test
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
@@ -49,3 +51,6 @@ networks:
   traefik:
     external: true
     name: traefik-public
+
+volumes:
+  secretary-state:
