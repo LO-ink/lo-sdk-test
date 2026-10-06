@@ -1,6 +1,6 @@
 {
   "name": "lo-sdk-test",
-  "version": "0.4.24",
+  "version": "0.4.25",
   "private": true,
   "type": "module",
   "engines": {
@@ -31,9 +31,9 @@
     "@lo-ink/adapter-webapp-compat": "0.20.0",
     "@lo-ink/bot-http-lo": "0.5.1",
     "@lo-ink/bot-sdk": "0.4.4",
-    "@lo-ink/design-tokens": "0.2.0",
+    "@lo-ink/design-tokens": "0.3.0",
     "@lo-ink/miniapp-sdk": "0.21.1",
-    "@lo-ink/ui": "0.2.0",
+    "@lo-ink/ui": "0.3.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

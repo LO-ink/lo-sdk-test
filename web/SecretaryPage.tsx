@@ -1,4 +1,4 @@
-import { Button } from "@lo-ink/ui";
+import { Button, Heading, Text, Stack } from "@lo-ink/ui";
 import { useEffect, useRef, useState } from "react";
 
 type Flow = {
@@ -90,33 +90,33 @@ export function SecretaryPage({
     flow.draft?.state === "sent" &&
     Boolean(flow.draft.messageId);
   return (
-    <section className="run-panel" aria-labelledby="secretary-heading">
-      <h2 id="secretary-heading">Секретарь</h2>
-      <p>
+    <Stack as="section" className="run-panel" aria-labelledby="secretary-heading">
+      <Heading level={2} id="secretary-heading">Секретарь</Heading>
+      <Text>
         Проверка отдельного тестового бота: входящее, черновик, одобрение в LO и
         серверное подтверждение отправки.
-      </p>
+      </Text>
       {!authenticated && (
-        <p>Откройте стенд в LO и проверьте подпись запуска.</p>
+        <Text>Откройте стенд в LO и проверьте подпись запуска.</Text>
       )}
       {authenticated && flow?.configured === false && (
-        <p>
+        <Text>
           Сценарий пока не настроен. Для него нужны отдельный тестовый бот, два
           тестовых аккаунта и приватное хранилище на сервере.
-        </p>
+        </Text>
       )}
       {flow?.configured && (
         <>
-          <p>
+          <Text>
             Владелец: {flow.ownerId}. Тестовый собеседник: {flow.peerId}. Бот:{" "}
             {flow.botId}.
-          </p>
-          <p>
+          </Text>
+          <Text>
             Предварительно подключите этого бота в настройках LO и разрешите
             получение и отправку в тестовом диалоге. Подключение другого
             секретаря может заменить текущего; используйте отдельный тестовый
             аккаунт.
-          </p>
+          </Text>
           {!flow.runId && (
             <Button disabled={busy} onClick={() => void perform("start")}>
               Проверить подключение
@@ -148,13 +148,13 @@ export function SecretaryPage({
               </ol>
               {!flow.incomingReceived && (
                 <>
-                  <p>
+                  <Text>
                     Попросите тестового собеседника отправить владельцу именно
                     этот текст:
-                  </p>
-                  <p>
-                    <code>{flow.challenge}</code>
-                  </p>
+                  </Text>
+                  <Text>
+                    <Text as="code" family="mono">{flow.challenge}</Text>
+                  </Text>
                   <Button
                     disabled={busy || flow.expired}
                     onClick={() => void perform("incoming")}
@@ -165,7 +165,7 @@ export function SecretaryPage({
               )}
               {flow.incomingReceived && (
                 <>
-                  <p>Предлагаемый ответ в этот же тестовый диалог:</p>
+                  <Text>Предлагаемый ответ в этот же тестовый диалог:</Text>
                   <blockquote>{flow.reply}</blockquote>
                   {!flow.draft && (
                     <Button
@@ -178,10 +178,10 @@ export function SecretaryPage({
                     </Button>
                   )}
                   {flow.draft && !sent && (
-                    <p>
+                    <Text>
                       Откройте «Секретарь» в LO и одобрите этот черновик. Затем
                       сразу проверьте результат здесь.
-                    </p>
+                    </Text>
                   )}
                   {flow.draft && !sent && (
                     <Button
@@ -199,30 +199,30 @@ export function SecretaryPage({
                 </>
               )}
               {sent && (
-                <p role="status">
+                <Text role="status">
                   Отправка подтверждена. Сообщение №{flow.draft?.messageId}.
                   Проверьте его появление у тестового собеседника отдельно.
-                </p>
+                </Text>
               )}
               {flow.outcome === "unknown" || flow.outcome === "unavailable" ? (
-                <p role="status">
+                <Text role="status">
                   Результат сейчас неизвестен. Проверьте черновик и диалог в LO;
                   повтор сохраняет прежний ключ и текст.
-                </p>
+                </Text>
               ) : null}
               {flow.expired && (
-                <p>
+                <Text>
                   Проверка истекла. Сохранённый запрос не заменяется новым;
                   проверьте результат в LO.
-                </p>
+                </Text>
               )}
             </>
           )}
         </>
       )}
-      {busy && <p role="status">Проверяем…</p>}
-      {error && <p role="alert">{error}</p>}
-      <p>
+      {busy && <Text role="status">Проверяем…</Text>}
+      {error && <Text role="alert">{error}</Text>}
+      <Text>
         <a
           href="https://github.com/LO-ink/lo-developer-tools/blob/main/docs/secretary.md"
           target="_blank"
@@ -230,7 +230,7 @@ export function SecretaryPage({
         >
           Руководство для разработчика
         </a>
-      </p>
-    </section>
+      </Text>
+    </Stack>
   );
 }

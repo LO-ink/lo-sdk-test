@@ -1,4 +1,4 @@
-import { Button, TextField } from "@lo-ink/ui";
+import { Button, TextField, Heading, Text, Surface } from "@lo-ink/ui";
 import { useEffect, useRef, useState } from "react";
 import type { InteractionView } from "./interaction.ts";
 export function RunInteraction({
@@ -28,17 +28,20 @@ export function RunInteraction({
     </Button>
   );
   return (
-    <section
+    <Surface
+      padding={0}
       className="run-interaction group"
       aria-labelledby="interaction-title"
       aria-busy={view.phase === "busy"}
     >
       <div className="interaction-content">
-        <h2 id="interaction-title" ref={heading} tabIndex={-1}>
+        <Heading level={2} id="interaction-title" ref={heading} tabIndex={-1}>
           {view.title}
-        </h2>
+        </Heading>
         {!(view.phase === "confirm" && view.detail === view.question) && (
-          <p className="interaction-description">{view.detail}</p>
+          <Text tone="secondary" size="label">
+            {view.detail}
+          </Text>
         )}
         {view.input && (
           <div className="interaction-input">
@@ -60,22 +63,22 @@ export function RunInteraction({
           </div>
         )}
         {view.phase === "confirm" && (
-          <p className="interaction-question">
+          <Text tone="primary" size="label" weight="medium">
             {view.question ?? "Подтверждаете результат?"}
-          </p>
+          </Text>
         )}
         {view.phase === "confirm" && view.attempt > 1 && (
-          <p className="interaction-description" role="status">
+          <Text tone="secondary" size="label" role="status">
             Попытка {view.attempt}. Проверьте результат повторного действия.
-          </p>
+          </Text>
         )}
       </div>
       <div className="interaction-actions">
         {!inlineStart && startButton}
         {view.phase === "busy" && (
-          <p role="status">
+          <Text tone="secondary" size="label" role="status">
             {view.attempt > 1 ? "Повторяем действие…" : "Ожидаем ответ LO…"}
-          </p>
+          </Text>
         )}
         {view.phase === "confirm" && (
           <div className="interaction-answers">
@@ -88,6 +91,8 @@ export function RunInteraction({
         <div className="interaction-tools">
           {view.phase === "confirm" && view.action && (
             <Button
+              variant="quiet"
+              size="small"
               onClick={() => view.repeat(text)}
               aria-label="Повторить действие"
             >
@@ -95,11 +100,19 @@ export function RunInteraction({
             </Button>
           )}
           {view.phase !== "busy" && (
-            <Button onClick={() => view.answer("skip")}>Пропустить</Button>
+            <Button
+              variant="quiet"
+              size="small"
+              onClick={() => view.answer("skip")}
+            >
+              Пропустить
+            </Button>
           )}
-          <Button onClick={onStop}>Остановить</Button>
+          <Button variant="quiet" size="small" onClick={onStop}>
+            Остановить
+          </Button>
         </div>
       </div>
-    </section>
+    </Surface>
   );
 }

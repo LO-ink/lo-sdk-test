@@ -16,7 +16,7 @@ import {
   saveRun,
 } from "../web/run-storage.ts";
 import { createSuite, type SuiteContext } from "../web/suite.ts";
-import sdkBuild from "../public/sdk-build.json";
+import sdkBuild from "../sdk-build.json";
 import type { MiniAppClient } from "@lo-ink/miniapp-sdk";
 const id = "11111111-1111-4111-8111-111111111111";
 const dependencies = dependencyKey(sdkBuild.packages);
@@ -466,4 +466,43 @@ test("the reviewed UI-only upgrade preserves a 0.4.22 run but rejects execution 
   raw.schema = 2;
   store.setItem(lastRunKey, JSON.stringify(raw));
   assert.equal(readRun(store, upgraded), null);
+});
+
+test("the reviewed UI primitive and font upgrade preserves reviewed 0.4.22/0.4.23 runs and rejects unreviewed builds", () => {
+  const previousPackages = sdkBuild.packages.map((entry) => ({
+    ...entry,
+    version: ["@lo-ink/ui", "@lo-ink/design-tokens"].includes(entry.name)
+      ? "0.2.0"
+      : entry.version,
+  }));
+  const targetPackages = previousPackages.map((entry) => ({
+    ...entry,
+    version: ["@lo-ink/ui", "@lo-ink/design-tokens"].includes(entry.name)
+      ? "0.3.0"
+      : entry.version,
+  }));
+  const dependencies = dependencyKey(targetPackages);
+  const store = storage();
+  const before = report();
+  saveRun(store, before, "0.4.23", dependencyKey(previousPackages));
+  assert.deepEqual(readRun(store, dependencies), before);
+  assert.equal(
+    readRun(
+      store,
+      dependencies.replace("@lo-ink/ui@0.3.0", "@lo-ink/ui@0.2.2"),
+    ),
+    null,
+  );
+  saveRun(store, before, "0.4.22", dependencyKey(previousPackages));
+  assert.equal(readRun(store, dependencies), null);
+  const oldPackages = previousPackages.map((entry) => ({
+    ...entry,
+    version: ["@lo-ink/ui", "@lo-ink/design-tokens"].includes(entry.name)
+      ? "0.1.1"
+      : entry.version,
+  }));
+  saveRun(store, before, "0.4.22", dependencyKey(oldPackages));
+  assert.deepEqual(readRun(store, dependencies), before);
+  saveRun(store, before, "0.4.20", dependencyKey(oldPackages));
+  assert.equal(readRun(store, dependencies), null);
 });

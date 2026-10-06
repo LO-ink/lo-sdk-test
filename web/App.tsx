@@ -1,4 +1,13 @@
-import { Button, TextField } from "@lo-ink/ui";
+import {
+  Button,
+  TextField,
+  Heading,
+  Text,
+  Dialog,
+  TextArea,
+  Surface,
+  Stack,
+} from "@lo-ink/ui";
 import { useEffect, useRef, useState } from "react";
 import {
   bindSafeAreaCss,
@@ -25,7 +34,7 @@ import {
 } from "./runner.ts";
 import { createSuite } from "./suite.ts";
 import { beginWriteAccess, type WriteAccessResult } from "./consent.ts";
-import sdkBuild from "../public/sdk-build.json";
+import sdkBuild from "../sdk-build.json";
 import { version as appVersion } from "../package.json";
 import { beginAudio, type AudioStart } from "./audio.ts";
 import { createInteraction, type InteractionView } from "./interaction.ts";
@@ -1056,10 +1065,20 @@ export function App() {
   };
   const resultView = (name: string) =>
     results[name] ? (
-      <div className={`result ${results[name].state}`} role="status">
-        <strong>{stateLabel[results[name].state]}</strong>
-        {results[name].detail && <pre>{results[name].detail}</pre>}
-      </div>
+      <Surface
+        padding={3}
+        className={`result ${results[name].state}`}
+        role="status"
+      >
+        <Text as="strong" weight="bold" size="label">
+          {stateLabel[results[name].state]}
+        </Text>
+        {results[name].detail && (
+          <Text as="pre" family="mono" size="caption">
+            {results[name].detail}
+          </Text>
+        )}
+      </Surface>
     ) : null;
   const completed = Object.values(results).filter(
     (value) => value.state === "done",
@@ -1082,24 +1101,26 @@ export function App() {
   return (
     <div className="app">
       <header>
-        <h1>LO SDK Test</h1>
-        <span className="connection" role="status">
+        <Heading level={1}>LO SDK Test</Heading>
+        <Text as="span" size="caption" className="connection" role="status">
           {client ? "LO подключён" : "Откройте в LO для живых проверок"}
-        </span>
+        </Text>
       </header>
       <nav className="sdk-sections" aria-label="Разделы">
         <Button
-          variant="quiet"
-          className={tab === "Все проверки" ? "active" : ""}
+          variant={tab === "Все проверки" ? "secondary" : "quiet"}
+          size="small"
           aria-current={tab === "Все проверки" ? "page" : undefined}
           onClick={() => setTab("Все проверки")}
         >
           Проверка
         </Button>
         <Button
-          variant="quiet"
+          variant={
+            tab !== "Все проверки" && tab !== "UI" ? "secondary" : "quiet"
+          }
+          size="small"
           disabled={runningAll}
-          className={tab !== "Все проверки" && tab !== "UI" ? "active" : ""}
           aria-current={
             tab !== "Все проверки" && tab !== "UI" ? "page" : undefined
           }
@@ -1108,9 +1129,9 @@ export function App() {
           Вручную
         </Button>
         <Button
-          variant="quiet"
+          variant={tab === "UI" ? "secondary" : "quiet"}
+          size="small"
           disabled={runningAll}
-          className={tab === "UI" ? "active" : ""}
           aria-current={tab === "UI" ? "page" : undefined}
           onClick={() => setTab("UI")}
         >
@@ -1142,9 +1163,14 @@ export function App() {
         </div>
       )}
       {exportMessage && (
-        <p className="export-message" role="status">
+        <Text
+          tone="secondary"
+          size="label"
+          className="export-message"
+          role="status"
+        >
           {exportMessage}
-        </p>
+        </Text>
       )}
       <main>
         {tab === "UI" && <UiPage />}
@@ -1173,12 +1199,12 @@ export function App() {
         {tab === "Данные запуска" && (
           <>
             <div className="section-heading">
-              <div>
-                <h2>Данные запуска</h2>
-                <p></p>
-              </div>
+              <Stack gap={1}>
+                <Heading level={2}>Данные запуска</Heading>
+                <Text tone="secondary" size="label"></Text>
+              </Stack>
             </div>
-            <section className="group">
+            <Surface padding={0} className="group">
               <dl>
                 <div>
                   <dt>Пользователь</dt>
@@ -1202,7 +1228,9 @@ export function App() {
                 </div>
               </dl>
               <div className="group-footer">
-                <p className="note">Сырая строка и ключи не входят в отчёт.</p>
+                <Text tone="secondary" size="caption">
+                  Сырая строка и ключи не входят в отчёт.
+                </Text>
                 <Button
                   disabled={!client || !configuration?.appConfigured}
                   onClick={() => {
@@ -1212,21 +1240,25 @@ export function App() {
                   Проверить подпись
                 </Button>
                 {!configuration?.appConfigured && (
-                  <p className="note">
+                  <Text tone="secondary" size="caption">
                     Настройте ключ приложения на сервере, затем обновите
                     страницу.
-                  </p>
+                  </Text>
                 )}
                 {resultView("verifyInitData")}
               </div>
-            </section>
-            <h2 className="standalone-heading">Экран и звук</h2>
-            <section className="group">
+            </Surface>
+            <Heading level={2} className="standalone-heading">
+              Экран и звук
+            </Heading>
+            <Surface padding={0} className="group">
               <div className="row">
-                <div>
-                  <h3>Безопасные поля экрана</h3>
-                  <p className="mono">{insets}</p>
-                </div>
+                <Stack gap={1}>
+                  <Heading level={3}>Безопасные поля экрана</Heading>
+                  <Text tone="secondary" size="label" family="mono">
+                    {insets}
+                  </Text>
+                </Stack>
                 <Button
                   variant="secondary"
                   disabled={!client}
@@ -1239,10 +1271,12 @@ export function App() {
               </div>
               {resultView("snapshot")}
               <div className="row">
-                <div>
-                  <h3>Тестовый сигнал</h3>
-                  <p>Контекст: {audioState}</p>
-                </div>
+                <Stack gap={1}>
+                  <Heading level={3}>Тестовый сигнал</Heading>
+                  <Text tone="secondary" size="label">
+                    Контекст: {audioState}
+                  </Text>
+                </Stack>
                 <Button
                   variant="secondary"
                   onClick={() => {
@@ -1252,34 +1286,45 @@ export function App() {
                   Проверить звук
                 </Button>
               </div>
-            </section>
-            <h2 className="standalone-heading">Результат текущего запуска</h2>
-            <section className="group summary">
-              <span>
-                <strong>{completed}</strong> выполнено
-              </span>
-              <span>
-                <strong>{failed}</strong> ошибок
-              </span>
-              <span>
-                <strong>{operationNames.length}</strong> операций приложения LO
-                в каталоге
-              </span>
-            </section>
+            </Surface>
+            <Heading level={2} className="standalone-heading">
+              Результат текущего запуска
+            </Heading>
+            <Surface padding={0} className="group summary">
+              <Text as="span" size="caption">
+                <Text as="strong" weight="bold" size="title">
+                  {completed}
+                </Text>{" "}
+                выполнено
+              </Text>
+              <Text as="span" size="caption">
+                <Text as="strong" weight="bold" size="title">
+                  {failed}
+                </Text>{" "}
+                ошибок
+              </Text>
+              <Text as="span" size="caption">
+                <Text as="strong" weight="bold" size="title">
+                  {operationNames.length}
+                </Text>{" "}
+                операций приложения LO в каталоге
+              </Text>
+            </Surface>
           </>
         )}
         {tab === "Приложение LO" && (
           <>
             <div className="section-heading">
-              <div>
-                <h2>Приложение LO</h2>
-                <p>
+              <Stack gap={1}>
+                <Heading level={2}>Приложение LO</Heading>
+                <Text tone="secondary" size="label">
                   Запускайте каждую проверку вручную. Доступность определяет LO.
-                </p>
-              </div>
+                </Text>
+              </Stack>
             </div>
             <TextField
               className="search"
+              labelHidden
               label="Найти проверку"
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
@@ -1297,7 +1342,7 @@ export function App() {
                 </Button>
               ))}
             </div>
-            <section className="group operations">
+            <Surface padding={0} className="group operations">
               {operationNames
                 .filter(
                   (name) =>
@@ -1314,15 +1359,18 @@ export function App() {
                   return (
                     <article key={name}>
                       <div className="row">
-                        <div>
-                          <h3>{definition.label}</h3>
-                          <p>
-                            <code>{name}</code> ·{" "}
+                        <Stack gap={1}>
+                          <Heading level={3}>{definition.label}</Heading>
+                          <Text tone="secondary" size="label">
+                            <Text as="code" family="mono" size="caption">
+                              {name}
+                            </Text>{" "}
+                            ·{" "}
                             {supported
                               ? "Доступно"
                               : "Приложение LO не поддерживает"}
-                          </p>
-                        </div>
+                          </Text>
+                        </Stack>
                         <div className="actions">
                           <Button
                             variant="secondary"
@@ -1371,40 +1419,50 @@ export function App() {
                     .toLowerCase()
                     .includes(filter.toLowerCase()),
               ).length === 0 && (
-                <p className="empty">Проверки не найдены. Измените поиск.</p>
+                <Text tone="secondary" size="label" className="empty">
+                  Проверки не найдены. Измените поиск.
+                </Text>
               )}
-            </section>
-            <h2 className="standalone-heading">События</h2>
-            <section className="group event-list">
+            </Surface>
+            <Heading level={2} className="standalone-heading">
+              События
+            </Heading>
+            <Surface padding={0} className="group event-list">
               {events.map((event) => (
                 <div className="event" key={event}>
-                  <code>{event}</code>
-                  <span>{eventValues[event] ?? "Пока не получено"}</span>
+                  <Text as="code" family="mono" size="caption">
+                    {event}
+                  </Text>
+                  <Text as="span" size="caption">
+                    {eventValues[event] ?? "Пока не получено"}
+                  </Text>
                 </div>
               ))}
-            </section>
+            </Surface>
           </>
         )}
         {tab === "Бот" && (
           <>
             <div className="section-heading">
-              <div>
-                <h2>Сообщения и медиа</h2>
-                <p>Тесты отправляются только вам, по проверенному ID.</p>
-              </div>
+              <Stack gap={1}>
+                <Heading level={2}>Сообщения и медиа</Heading>
+                <Text tone="secondary" size="label">
+                  Тесты отправляются только вам, по проверенному ID.
+                </Text>
+              </Stack>
             </div>
-            <section className="group">
+            <Surface padding={0} className="group">
               <div className="row">
-                <div>
-                  <h3>Согласие на сообщения</h3>
-                  <p>
+                <Stack gap={1}>
+                  <Heading level={3}>Согласие на сообщения</Heading>
+                  <Text tone="secondary" size="label">
                     {consent === true
                       ? "Разрешено"
                       : consent === false
                         ? "Отправка не разрешена"
                         : "Ещё не запрашивали"}
-                  </p>
-                </div>
+                  </Text>
+                </Stack>
                 <Button
                   disabled={
                     !authenticated ||
@@ -1419,7 +1477,7 @@ export function App() {
                 </Button>
               </div>
               <div className="group-footer">
-                <p className="note">
+                <Text tone="secondary" size="caption">
                   {authenticated
                     ? "Подпись проверена"
                     : "Подпись запуска не проверена"}
@@ -1428,8 +1486,12 @@ export function App() {
                     ? "Токен бота настроен"
                     : "Токен бота ещё не настроен"}
                   .
-                </p>
-                {backendMessage && <p role="status">{backendMessage}</p>}
+                </Text>
+                {backendMessage && (
+                  <Text tone="secondary" size="label" role="status">
+                    {backendMessage}
+                  </Text>
+                )}
                 {consent !== null && (
                   <Button
                     variant="secondary"
@@ -1443,8 +1505,8 @@ export function App() {
                 )}
                 {resultView("requestWriteAccess")}
               </div>
-            </section>
-            <section className="group bot-tests">
+            </Surface>
+            <Surface padding={0} className="group bot-tests">
               {[
                 "getIdentity",
                 "getCapabilities",
@@ -1460,7 +1522,9 @@ export function App() {
               ].map((operation) => (
                 <article key={operation}>
                   <div className="row">
-                    <code>{operation}</code>
+                    <Text as="code" family="mono" size="caption">
+                      {operation}
+                    </Text>
                     <Button
                       disabled={
                         !authenticated ||
@@ -1484,15 +1548,11 @@ export function App() {
                 </article>
               ))}
               <div className="group-footer">
-                <label className="file-label">
-                  Фото, документ, AAC-голосовое или MP4-видео
-                  <input
-                    type="file"
-                    onChange={(event) =>
-                      setFile(event.target.files?.[0] ?? null)
-                    }
-                  />
-                </label>
+                <TextField
+                  label="Фото, документ, AAC-голосовое или MP4-видео"
+                  type="file"
+                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                />
                 <div
                   className="sample-files"
                   aria-label="Готовые файлы для проверки"
@@ -1522,11 +1582,15 @@ export function App() {
                     Тестовое видео
                   </Button>
                 </div>
-                {file && <p className="note">Выбран: {file.name}</p>}
-                <p className="note">
+                {file && (
+                  <Text tone="secondary" size="caption">
+                    Выбран: {file.name}
+                  </Text>
+                )}
+                <Text tone="secondary" size="caption">
                   Голос: AAC в M4A/MP4 или сырой AAC. После загрузки можно
                   повторить по сохранённому fileId.
-                </p>
+                </Text>
               </div>
               {[
                 "sendPhoto",
@@ -1542,7 +1606,9 @@ export function App() {
               ].map((operation) => (
                 <article key={operation}>
                   <div className="row">
-                    <code>{operation}</code>
+                    <Text as="code" family="mono" size="caption">
+                      {operation}
+                    </Text>
                     <Button
                       disabled={
                         !authenticated ||
@@ -1560,19 +1626,19 @@ export function App() {
                   {resultView(`bot:${operation}`)}
                 </article>
               ))}
-            </section>
-            <h2 className="standalone-heading">
+            </Surface>
+            <Heading level={2} className="standalone-heading">
               Проверки отказов без отправки
-            </h2>
-            <section className="group">
+            </Heading>
+            <Surface padding={0} className="group">
               <div className="row">
-                <div>
-                  <h3>Ошибки и лимиты</h3>
-                  <p>
+                <Stack gap={1}>
+                  <Heading level={3}>Ошибки и лимиты</Heading>
+                  <Text tone="secondary" size="label">
                     400 / 403 / 429 / 503, URL вместо файла, HTTP-кнопка,
                     большая подпись
-                  </p>
-                </div>
+                  </Text>
+                </Stack>
                 <Button
                   variant="secondary"
                   onClick={() => {
@@ -1583,19 +1649,19 @@ export function App() {
                 </Button>
               </div>
               {resultView("bot:conformance")}
-            </section>
+            </Surface>
           </>
         )}
         {tab === "Журнал" && (
           <>
             <div className="section-heading">
-              <div>
-                <h2>Журнал текущего запуска</h2>
-                <p>
+              <Stack gap={1}>
+                <Heading level={2}>Журнал текущего запуска</Heading>
+                <Text tone="secondary" size="label">
                   Последние 100 действий и событий. Ключи и строка запуска
                   скрыты.
-                </p>
-              </div>
+                </Text>
+              </Stack>
               <Button
                 variant="secondary"
                 size="small"
@@ -1604,21 +1670,27 @@ export function App() {
                 Очистить
               </Button>
             </div>
-            <section className="group">
+            <Surface padding={0} className="group">
               {log.length === 0 ? (
-                <p className="empty">Проверки ещё не запускались.</p>
+                <Text tone="secondary" size="label" className="empty">
+                  Проверки ещё не запускались.
+                </Text>
               ) : (
                 log.map((entry, index) => (
                   <article className="log-entry" key={`${entry.time}-${index}`}>
                     <time>{entry.time}</time>
                     <div>
-                      <code>{entry.label}</code>
-                      <pre>{entry.detail}</pre>
+                      <Text as="code" family="mono" size="caption">
+                        {entry.label}
+                      </Text>
+                      <Text as="pre" family="mono" size="caption">
+                        {entry.detail}
+                      </Text>
                     </div>
                   </article>
                 ))
               )}
-            </section>
+            </Surface>
           </>
         )}
       </main>
@@ -1635,75 +1707,85 @@ export function App() {
         />
       )}
       {reportText && (
-        <dialog
+        <Dialog
           ref={reportDialog}
           className="modal"
           aria-labelledby="report-title"
           onCancel={() => setReportText("")}
         >
-          <h2 id="report-title">Отчёт проверки</h2>
-          <p>Скопируйте JSON отчёта.</p>
-          <textarea
-            aria-label="JSON отчёта"
-            readOnly
-            rows={12}
-            value={reportText}
-          />
-          <div className="actions">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                reportDialog.current?.close();
-                setReportText("");
-              }}
-            >
-              Закрыть
-            </Button>
-          </div>
-        </dialog>
+          <Stack gap={4}>
+            <Heading level={2} id="report-title">
+              Отчёт проверки
+            </Heading>
+            <Text tone="secondary" size="label">
+              Скопируйте JSON отчёта.
+            </Text>
+            <TextArea
+              label="JSON отчёта"
+              readOnly
+              rows={12}
+              value={reportText}
+            />
+            <div className="actions">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  reportDialog.current?.close();
+                  setReportText("");
+                }}
+              >
+                Закрыть
+              </Button>
+            </div>
+          </Stack>
+        </Dialog>
       )}
       {selected && (
-        <dialog
+        <Dialog
           ref={dialog}
           className="modal"
           aria-labelledby="editor-title"
           onCancel={() => setSelected(null)}
         >
-          <h2 id="editor-title">{cases[selected].label}</h2>
-          <p>
-            <code>{selected}</code>
-          </p>
-          <label htmlFor="params">
-            Параметры JSON; пусто для вызова без параметров
-          </label>
-          <textarea
-            id="params"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            autoFocus
-            rows={8}
-          />
-          <div className="actions">
-            <Button variant="secondary" onClick={() => setSelected(null)}>
-              Закрыть
-            </Button>
-            <Button
-              disabled={!client?.supports(cases[selected].capability)}
-              onClick={() => {
-                try {
-                  const parsed = input ? JSON.parse(input) : undefined;
-                  const name = selected;
-                  setSelected(null);
-                  void run(name, parsed);
-                } catch {
-                  complete(selected, "Некорректный JSON", "failed");
-                }
-              }}
-            >
-              Запустить
-            </Button>
-          </div>
-        </dialog>
+          <Stack gap={4}>
+            <Heading level={2} id="editor-title">
+              {cases[selected].label}
+            </Heading>
+            <Text tone="secondary" size="label">
+              <Text as="code" family="mono" size="caption">
+                {selected}
+              </Text>
+            </Text>
+            <TextArea
+              label="Параметры JSON; пусто для вызова без параметров"
+              id="params"
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              autoFocus
+              rows={8}
+            />
+            <div className="actions">
+              <Button variant="secondary" onClick={() => setSelected(null)}>
+                Закрыть
+              </Button>
+              <Button
+                disabled={!client?.supports(cases[selected].capability)}
+                onClick={() => {
+                  try {
+                    const parsed = input ? JSON.parse(input) : undefined;
+                    const name = selected;
+                    setSelected(null);
+                    void run(name, parsed);
+                  } catch {
+                    complete(selected, "Некорректный JSON", "failed");
+                  }
+                }}
+              >
+                Запустить
+              </Button>
+            </div>
+          </Stack>
+        </Dialog>
       )}
     </div>
   );
