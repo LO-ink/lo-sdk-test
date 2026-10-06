@@ -1,5 +1,6 @@
 import {
   Button,
+  Tabs,
   TextField,
   Heading,
   Text,
@@ -19,6 +20,8 @@ import { cases, events, operationNames } from "./cases.ts";
 import { applyPalette } from "./theme.ts";
 import { SecretaryPage } from "./SecretaryPage.tsx";
 import { UiPage } from "./UiPage.tsx";
+import { LaunchDetails } from "./LaunchDetails.tsx";
+import { useTabSwipe } from "./use-tab-swipe.ts";
 import { RunPage } from "./RunPage.tsx";
 import {
   bounded,
@@ -377,6 +380,25 @@ export function App() {
       });
   };
   const runningAll = startingRun || automatedRun?.state === "running";
+  const manualTab = useRef("Приложение LO");
+  const section =
+    tab === "Все проверки" ? "checks" : tab === "UI" ? "ui" : "manual";
+  const selectSection = (value: string) => {
+    if (runningAll) return;
+    setTab(
+      value === "checks"
+        ? "Все проверки"
+        : value === "ui"
+          ? "UI"
+          : manualTab.current,
+    );
+  };
+  const swipe = useTabSwipe({
+    value: section,
+    values: ["checks", "manual", "ui"],
+    disabled: runningAll,
+    onChange: selectSection,
+  });
   const startAll = async (resume = false) => {
     if (
       runController.current ||
@@ -1104,61 +1126,45 @@ export function App() {
           {client ? "LO подключён" : "Откройте в LO для живых проверок"}
         </Text>
       </header>
-      <nav className="sdk-sections" aria-label="Разделы">
-        <Button
-          variant={tab === "Все проверки" ? "secondary" : "quiet"}
-          size="small"
-          aria-current={tab === "Все проверки" ? "page" : undefined}
-          onClick={() => setTab("Все проверки")}
-        >
-          Проверка
-        </Button>
-        <Button
-          variant={
-            tab !== "Все проверки" && tab !== "UI" ? "secondary" : "quiet"
-          }
-          size="small"
-          disabled={runningAll}
-          aria-current={
-            tab !== "Все проверки" && tab !== "UI" ? "page" : undefined
-          }
-          onClick={() => setTab("Приложение LO")}
-        >
-          Вручную
-        </Button>
-        <Button
-          variant={tab === "UI" ? "secondary" : "quiet"}
-          size="small"
-          disabled={runningAll}
-          aria-current={tab === "UI" ? "page" : undefined}
-          onClick={() => setTab("UI")}
-        >
-          UI
-        </Button>
-      </nav>
-      {tab !== "Все проверки" && tab !== "UI" && (
-        <div
+      <Tabs
+        id="sdk-sections"
+        className="sdk-sections"
+        aria-label="Разделы"
+        value={section}
+        onValueChange={selectSection}
+        options={[
+          { value: "checks", label: "Проверка", panelId: "sdk-panel" },
+          {
+            value: "manual",
+            label: "Вручную",
+            panelId: "sdk-panel",
+            disabled: runningAll,
+          },
+          {
+            value: "ui",
+            label: "UI",
+            panelId: "sdk-panel",
+            disabled: runningAll,
+          },
+        ]}
+      />
+      {section === "manual" && (
+        <Tabs
           className="manual-section"
-          role="group"
           aria-label="Ручные проверки"
-        >
-          {[
+          value={tab}
+          onValueChange={(name) => {
+            manualTab.current = name;
+            setTab(name);
+          }}
+          options={[
             "Приложение LO",
             "Бот",
             "Секретарь",
             "Данные запуска",
             "Журнал",
-          ].map((name) => (
-            <Button
-              key={name}
-              variant={tab === name ? "primary" : "secondary"}
-              aria-pressed={tab === name}
-              onClick={() => setTab(name)}
-            >
-              {name}
-            </Button>
-          ))}
-        </div>
+          ].map((name) => ({ value: name, label: name }))}
+        />
       )}
       {exportMessage && (
         <Text
@@ -1170,7 +1176,12 @@ export function App() {
           {exportMessage}
         </Text>
       )}
-      <main>
+      <main
+        id="sdk-panel"
+        role="tabpanel"
+        aria-labelledby={`sdk-sections-tab-${["checks", "manual", "ui"].indexOf(section)}`}
+        {...swipe}
+      >
         {tab === "UI" && <UiPage />}
         {tab === "Секретарь" && (
           <SecretaryPage authenticated={authenticated} request={api} />
@@ -1199,32 +1210,14 @@ export function App() {
             <div className="section-heading">
               <Stack gap={1}>
                 <Heading level={2}>Данные запуска</Heading>
-                <Text tone="secondary" size="label"></Text>
               </Stack>
             </div>
             <Surface padding={0} className="group">
-              <dl>
-                <div>
-                  <dt>Пользователь</dt>
-                  <dd>{launch?.user?.firstName ?? "Нет данных"}</dd>
-                </div>
-                <div>
-                  <dt>ID пользователя</dt>
-                  <dd className="mono">{launch?.user?.id ?? "—"}</dd>
-                </div>
-                <div>
-                  <dt>Язык из LO</dt>
-                  <dd>{launch?.user?.languageCode || "Не передан"}</dd>
-                </div>
-                <div>
-                  <dt>Параметр запуска</dt>
-                  <dd>{launch?.startParam || "—"}</dd>
-                </div>
-                <div>
-                  <dt>Подпись на сервере</dt>
-                  <dd>{authenticated ? "Проверена" : "Не проверена"}</dd>
-                </div>
-              </dl>
+              <LaunchDetails
+                launch={launch}
+                authenticated={authenticated}
+                locale={client?.adapter.snapshot().locale}
+              />
               <div className="group-footer">
                 <Text tone="secondary" size="caption">
                   Сырая строка и ключи не входят в отчёт.
@@ -1323,23 +1316,19 @@ export function App() {
             <TextField
               className="search"
               labelHidden
+              variant="search"
               label="Найти проверку"
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
               placeholder="Поиск по названию или методу"
             />
-            <div className="filters" aria-label="Категория">
-              {groups.map((name) => (
-                <Button
-                  key={name}
-                  variant={group === name ? "primary" : "secondary"}
-                  aria-pressed={group === name}
-                  onClick={() => setGroup(name)}
-                >
-                  {name}
-                </Button>
-              ))}
-            </div>
+            <Tabs
+              className="filters"
+              aria-label="Группы проверок"
+              value={group}
+              onValueChange={setGroup}
+              options={groups.map((value) => ({ value, label: value }))}
+            />
             <Surface padding={0} className="group operations">
               {operationNames
                 .filter(

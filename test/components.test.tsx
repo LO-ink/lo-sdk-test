@@ -11,6 +11,8 @@ for (const name of [
   "window",
   "document",
   "HTMLElement",
+  "Element",
+  "getComputedStyle",
   "HTMLDialogElement",
   "Event",
   "MouseEvent",
@@ -228,8 +230,8 @@ test("manual checks without a host cannot send messages and display a failed ser
   };
   const page = render(<App />);
   assert.ok(page.getByText("Откройте в LO для живых проверок"));
-  fireEvent.click(page.getByRole("button", { name: "Вручную" }));
-  fireEvent.click(page.getByRole("button", { name: "Бот" }));
+  fireEvent.click(page.getByRole("tab", { name: "Вручную" }));
+  fireEvent.click(page.getByRole("tab", { name: "Бот" }));
   await waitFor(() =>
     assert.equal(
       (page.getByRole("button", { name: "Разрешить" }) as HTMLButtonElement)
@@ -244,11 +246,11 @@ test("manual checks without a host cannot send messages and display a failed ser
   fireEvent.click(page.getByRole("button", { name: "Проверить" }));
   await waitFor(() => assert.ok(page.getByText(/Fixture server unavailable/)));
   assert.deepEqual(operations, ["conformance"]);
-  fireEvent.click(page.getByRole("button", { name: "Журнал" }));
+  fireEvent.click(page.getByRole("tab", { name: "Журнал" }));
   assert.ok(page.getByText("bot:conformance"));
   fireEvent.click(page.getByRole("button", { name: "Очистить" }));
   assert.ok(page.getByText("Проверки ещё не запускались."));
-  fireEvent.click(page.getByRole("button", { name: "Данные запуска" }));
+  fireEvent.click(page.getByRole("tab", { name: "Данные запуска" }));
   assert.ok(page.getByRole("heading", { name: /Данные запуска/ }));
 });
 
@@ -374,8 +376,8 @@ test("stored consent never authorizes a fresh user's session", async () => {
   };
   try {
     const page = render(<App />);
-    fireEvent.click(page.getByRole("button", { name: "Вручную" }));
-    fireEvent.click(page.getByRole("button", { name: "Данные запуска" }));
+    fireEvent.click(page.getByRole("tab", { name: "Вручную" }));
+    fireEvent.click(page.getByRole("tab", { name: "Данные запуска" }));
     await waitFor(() =>
       assert.equal(
         (
@@ -618,15 +620,15 @@ test("the UI catalog covers all public primitives with local, isolated interacti
 test("the application exposes the UI page separately from manual checks", async () => {
   versionsUnavailable();
   const page = render(<App />);
-  fireEvent.click(page.getByRole("button", { name: "UI" }));
+  fireEvent.click(page.getByRole("tab", { name: "UI" }));
   assert.ok(page.getByRole("heading", { name: "UI компоненты" }));
-  assert.equal(page.queryByRole("group", { name: "Ручные проверки" }), null);
+  assert.equal(page.queryByRole("tablist", { name: "Ручные проверки" }), null);
   assert.equal(
-    page.getByRole("button", { name: "UI" }).getAttribute("aria-current"),
-    "page",
+    page.getByRole("tab", { name: "UI" }).getAttribute("aria-selected"),
+    "true",
   );
-  fireEvent.click(page.getByRole("button", { name: "Вручную" }));
-  assert.ok(page.getByRole("group", { name: "Ручные проверки" }));
+  fireEvent.click(page.getByRole("tab", { name: "Вручную" }));
+  assert.ok(page.getByRole("tablist", { name: "Ручные проверки" }));
 });
 
 test("Secretary first proposal is explicit and review receipt does not claim sent", async () => {
@@ -743,4 +745,248 @@ test("a first lost Secretary proposal response becomes an uncertain same-key ret
     page.queryByText("Одобрение и отправка подтверждены сервером"),
     null,
   );
+});
+
+test("launch details expose every typed value without signatures or raw credentials", async () => {
+  const { LaunchDetails } = await import("../web/LaunchDetails.tsx");
+  const page = render(
+    <LaunchDetails
+      authenticated={false}
+      locale="ru"
+      launch={{
+        user: {
+          id: "17",
+          firstName: "Test",
+          lastName: "Person",
+          username: "synthetic",
+          photoUrl: "https://cdn.lo.ink/test.jpg",
+          languageCode: "en",
+        },
+        startParam: "resume",
+        chatType: "private",
+        authDate: 123,
+        appId: "test-app",
+        queryId: "test-query",
+      }}
+    />,
+  );
+  for (const value of [
+    "17",
+    "ru",
+    "Test",
+    "Person",
+    "synthetic",
+    "https://cdn.lo.ink/test.jpg",
+    "en",
+    "resume",
+    "private",
+    "123",
+    "test-app",
+    "test-query",
+    "Не проверена",
+  ])
+    assert.ok(page.getByText(value, { exact: true }));
+  assert.equal(page.container.querySelectorAll("img, a").length, 0);
+  page.rerender(
+    <LaunchDetails authenticated launch={{ user: { id: "17" } }} />,
+  );
+  assert.equal(page.getAllByText("Не передано").length, 11);
+  assert.ok(page.getByText("Проверена"));
+});
+
+test("tab swipes change adjacent sections but preserve vertical scrolling and controls", async () => {
+  const { useTabSwipe } = await import("../web/use-tab-swipe.ts");
+  const { useState } = await import("react");
+  const changes: string[] = [];
+  function Example({ disabled = false }: { disabled?: boolean }) {
+    const [value, setValue] = useState("checks");
+    const swipe = useTabSwipe({
+      value,
+      values: ["checks", "manual", "ui"],
+      disabled,
+      onChange: (next) => {
+        changes.push(next);
+        setValue(next);
+      },
+    });
+    return (
+      <main {...swipe}>
+        <p>Swipe here</p>
+        <button>Keep action</button>
+        <input aria-label="Keep input" />
+        <label>
+          <span>Keep label</span>
+          <input type="checkbox" />
+        </label>
+        <details>
+          <summary>
+            <span>Keep summary</span>
+          </summary>
+        </details>
+        <div role="button">
+          <span>Keep role action</span>
+        </div>
+        <div tabIndex={0}>
+          <span>Keep focus target</span>
+        </div>
+        <div data-testid="scroller" style={{ overflowX: "auto" }}>
+          Scrollable
+        </div>
+        <span>{value}</span>
+      </main>
+    );
+  }
+  const page = render(<Example />);
+  const target = page.getByText("Swipe here");
+  const pointer = (
+    type: string,
+    element: Element,
+    x: number,
+    y: number,
+    props = {},
+  ) => {
+    const event = new dom.window.MouseEvent(type, {
+      bubbles: true,
+      clientX: x,
+      clientY: y,
+    });
+    Object.defineProperties(event, {
+      pointerId: { value: 1 },
+      isPrimary: { value: true },
+      pointerType: { value: "pen" },
+      ...Object.fromEntries(
+        Object.entries(props).map(([key, value]) => [key, { value }]),
+      ),
+    });
+    fireEvent(element, event);
+  };
+  const swipe = (element = target, dx = -100, dy = 0, props = {}) => {
+    pointer("pointerdown", element, 200, 100, props);
+    pointer("pointermove", element, 200 + dx, 100 + dy, props);
+    pointer("pointerup", element, 200 + dx, 100 + dy, props);
+  };
+  swipe();
+  assert.deepEqual(changes, ["manual"]);
+  swipe(target, -100, 120);
+  swipe(target, -30);
+  swipe(page.getByRole("button", { name: "Keep action" }));
+  swipe(page.getByRole("textbox"));
+  swipe(page.getByText("Keep label"));
+  swipe(page.getByText("Keep summary"));
+  swipe(page.getByText("Keep role action"));
+  swipe(page.getByText("Keep focus target"));
+  swipe(target, -100, 0, { pointerType: "mouse" });
+  swipe(target, -100, 0, { isPrimary: false });
+  assert.deepEqual(changes, ["manual"]);
+  const scroller = page.getByTestId("scroller");
+  Object.defineProperties(scroller, {
+    clientWidth: { value: 100 },
+    scrollWidth: { value: 200 },
+  });
+  swipe(scroller);
+  assert.deepEqual(changes, ["manual"]);
+  pointer("pointerdown", target, 200, 100);
+  pointer("pointercancel", target, 100, 100);
+  pointer("pointerup", target, 100, 100);
+  assert.deepEqual(changes, ["manual"]);
+  swipe(target, -100, 0, { pointerType: "pen" });
+  assert.deepEqual(changes, ["manual", "ui"]);
+  swipe();
+  assert.deepEqual(changes, ["manual", "ui"]);
+  swipe(target, 100);
+  assert.deepEqual(changes, ["manual", "ui", "manual"]);
+  page.rerender(<Example disabled />);
+  swipe();
+  assert.deepEqual(changes, ["manual", "ui", "manual"]);
+});
+
+test("touch ownership preserves controls, scrolling, cancellation and pinch gestures", async () => {
+  const { useTabSwipe } = await import("../web/use-tab-swipe.ts");
+  const changes: string[] = [];
+  function Example({ disabled = false }: { disabled?: boolean }) {
+    const swipe = useTabSwipe({
+      value: "checks",
+      values: ["checks", "manual", "ui"],
+      disabled,
+      onChange: (value) => changes.push(value),
+    });
+    return (
+      <main {...swipe}>
+        <p>Touch content</p>
+        <label>
+          <span>Touch control</span>
+          <input type="checkbox" />
+        </label>
+        <pre style={{ overflowX: "auto" }}>Touch scroller</pre>
+      </main>
+    );
+  }
+  const page = render(<Example />);
+  const target = page.getByText("Touch content");
+  const touch = (
+    type: string,
+    x: number,
+    y: number,
+    element = target,
+    count = 1,
+    cancelable = true,
+  ) => {
+    const event = new dom.window.Event(type, { bubbles: true, cancelable });
+    const item = { identifier: 1, clientX: x, clientY: y };
+    Object.defineProperties(event, {
+      touches: {
+        value:
+          type === "touchend"
+            ? []
+            : Array.from({ length: count }, (_, i) => ({
+                ...item,
+                identifier: i + 1,
+              })),
+      },
+      changedTouches: { value: [item] },
+    });
+    fireEvent(element, event);
+    return event.defaultPrevented;
+  };
+  touch("touchstart", 200, 100);
+  assert.equal(touch("touchmove", 100, 105), true);
+  touch("touchend", 100, 105);
+  assert.deepEqual(changes, ["manual"]);
+  for (const element of [
+    page.getByText("Touch control"),
+    page.getByText("Touch scroller"),
+  ]) {
+    if (element.tagName === "PRE")
+      Object.defineProperties(element, {
+        clientWidth: { value: 100 },
+        scrollWidth: { value: 200 },
+      });
+    touch("touchstart", 200, 100, element);
+    assert.equal(touch("touchmove", 100, 100, element), false);
+    touch("touchend", 100, 100, element);
+  }
+  touch("touchstart", 200, 100);
+  assert.equal(touch("touchmove", 190, 200), false);
+  touch("touchend", 100, 200);
+  touch("touchstart", 200, 100);
+  touch("touchcancel", 100, 100);
+  touch("touchend", 100, 100);
+  touch("touchstart", 200, 100);
+  assert.equal(touch("touchmove", 100, 100, target, 2), false);
+  touch("touchend", 100, 100);
+  touch("touchstart", 200, 100, target, 2);
+  touch("touchend", 100, 100);
+  touch("touchstart", 200, 100);
+  assert.equal(touch("touchmove", 100, 100, target, 1, false), false);
+  touch("touchend", 100, 100);
+  page.rerender(<Example disabled />);
+  touch("touchstart", 200, 100);
+  touch("touchmove", 100, 100);
+  touch("touchend", 100, 100);
+  assert.deepEqual(changes, ["manual"]);
+  page.unmount();
+  touch("touchstart", 200, 100);
+  touch("touchmove", 100, 100);
+  touch("touchend", 100, 100);
+  assert.deepEqual(changes, ["manual"]);
 });

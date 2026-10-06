@@ -1,5 +1,5 @@
 {
-  "appVersion": "0.4.26",
+  "appVersion": "0.4.27",
   "source": "npm-registry",
   "repositories": [
     {
@@ -22,17 +22,17 @@
   "packages": [
     {
       "name": "@lo-ink/adapter-lo-legacy",
-      "version": "0.3.0",
+      "version": "0.3.1",
       "repository": "lo-platform-adapters",
-      "sourceCommit": "5e68b15ead116418d3978276cba86a5e9b5296e8",
-      "integrity": "sha512-093DwGdf3Fs9ZfLes1R0QDUJXBoQjK6KaKWY5ZagEryVo2VGmKOfyHIkyh5fnpheb8EOUY2Ic7HiCeD2rov0Hw=="
+      "sourceCommit": "47a52406d68224960e4ec16c4531ef4a7fa1194f",
+      "integrity": "sha512-lhovLJ6mq0j3hJdWHPBWPG3GwD77iHAbhkeBkl52RekC5XPGJE1K6P71dOG9sofrBxepMJVSd8jl6jNjrJPBkA=="
     },
     {
       "name": "@lo-ink/adapter-webapp-compat",
-      "version": "0.20.1",
+      "version": "0.20.2",
       "repository": "lo-platform-adapters",
-      "sourceCommit": "5e68b15ead116418d3978276cba86a5e9b5296e8",
-      "integrity": "sha512-zi630gARtbtctvzrxDO+pivxI+4PQ8TYOtKihZLr3pVMUDssQo4pqymr4XPBeGPXVK7AzS9wCiS5OVURgvAQfw=="
+      "sourceCommit": "47a52406d68224960e4ec16c4531ef4a7fa1194f",
+      "integrity": "sha512-6fkcsjmlr1OiTYgRZvAANPvt9Au4DYkFnoymDu/aBGtpqlMM0an4xWAx5UVg259fIYSLXFNBQuCkUr54HUQKpg=="
     },
     {
       "name": "@lo-ink/bot-sdk",
@@ -50,17 +50,17 @@
     },
     {
       "name": "@lo-ink/miniapp-sdk",
-      "version": "0.22.0",
+      "version": "0.22.1",
       "repository": "lo-miniapp-sdk",
-      "sourceCommit": "a29a369efa092475ca05e99af0d02b2942484a93",
-      "integrity": "sha512-p9kXzV4qI9AuSx3RWu884LY5m05fP/xZtInajPr/2eue6zsC76GuNiqgYZLboKgHtQw9HeZ/r2ulLceIrsjuGw=="
+      "sourceCommit": "3c70307b6216ea7aee635f677fc6853f1cfc3e33",
+      "integrity": "sha512-lPJa/VLGnR2Ca3VR5Nh0zlJzYOCTuejeb1AVguDzTwPdnN8LL/gHUqbnX+UpQTuqG69jfhCJtsb5Zf7/496s6A=="
     },
     {
       "name": "@lo-ink/ui",
-      "version": "0.3.1",
+      "version": "0.4.0",
       "repository": "lo-ui",
-      "sourceCommit": "19be6bc3ce9311305da4209be1a7c994a1e7db5b",
-      "integrity": "sha512-oMMVVdUTkS9G8G26BMUOnO9AB9Y05rsaP/N8oAR3L23z8yzCCIFrj5w7+3rZiXy39XS1AIzZU+zPC6sFodSK0w=="
+      "sourceCommit": "74c5541255a2c327ba726659cf683402aac85c66",
+      "integrity": "sha512-ELXtS8xoRgQfr4I9oge/hBXY6+QQK8cugg3YxYhpdaTxEOf6w3zI8aa/Zk1bRUj7gWHLByBFxffsfA0zzVQX7Q=="
     }
   ],
   "goVerifier": {

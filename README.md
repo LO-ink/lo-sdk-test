@@ -106,3 +106,9 @@ set; native SDK version changes do not relabel old results as newly tested.
 The architecture gate parses application CSS and rejects direct typography,
 control appearance and shared SDK selector overrides. Layout, host tokens and
 tabular report numbers remain application responsibilities.
+
+## Navigation and launch metadata
+
+The main sections support horizontal touch/pen swipes and shared UI SDK tabs. Swipes leave text fields, actions and horizontally scrolling tab/filter rows alone; they do not leave an active guided run. Manual section selection is retained when returning from the gallery. Whole filter labels scroll horizontally on narrow screens.
+
+Launch details show every typed SDK field without raw launch strings or signature credentials. LO interface language comes only from the optional native host snapshot; signed user language is displayed separately. Missing interface language on an older LO host requires a client update. An absent start parameter is normal for launches without one. Signature status changes only after server verification.

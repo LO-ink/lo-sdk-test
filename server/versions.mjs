@@ -32,6 +32,111 @@ const packageSources = new Map([
   ],
 ]);
 const sha = /^[a-f0-9]{40}$/;
+const record = (value) =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+const dependencyFields = [
+  "dependencies",
+  "devDependencies",
+  "optionalDependencies",
+  "peerDependencies",
+];
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (record(value))
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, stable(value[key])]),
+    );
+  return value;
+}
+function scopedLock(lock, target, name) {
+  if (
+    !record(lock) ||
+    lock.lockfileVersion !== 3 ||
+    !record(lock.packages) ||
+    !record(lock.packages[""]) ||
+    !Array.isArray(lock.packages[""].workspaces) ||
+    !lock.packages[""].workspaces.length ||
+    !lock.packages[""].workspaces.every(
+      (path) =>
+        typeof path === "string" && /^(packages|apps)\/(\*|[^/*]+)$/.test(path),
+    )
+  )
+    throw new Error("Unsupported workspace lock");
+  const locals = new Map(),
+    names = new Map();
+  for (const [path, entry] of Object.entries(lock.packages)) {
+    if (!record(entry)) throw new Error("Invalid locked package");
+    if (
+      path &&
+      entry.link !== true &&
+      (typeof entry.version !== "string" || !entry.version)
+    )
+      throw new Error("Missing locked version");
+    for (const field of dependencyFields) {
+      if (
+        entry[field] !== undefined &&
+        (!record(entry[field]) ||
+          !Object.values(entry[field]).every(
+            (value) => typeof value === "string",
+          ))
+      )
+        throw new Error("Invalid locked dependencies");
+    }
+    if (path && !path.split("/").includes("node_modules")) {
+      if (
+        !/^(packages|apps)\/[^/]+$/.test(path) ||
+        !lock.packages[""].workspaces.some((pattern) =>
+          pattern.endsWith("/*")
+            ? path.startsWith(pattern.slice(0, -1))
+            : path === pattern,
+        ) ||
+        typeof entry.name !== "string" ||
+        !entry.name ||
+        names.has(entry.name) ||
+        entry.link !== undefined
+      )
+        throw new Error("Invalid workspace package");
+      locals.set(path, entry);
+      names.set(entry.name, path);
+    }
+  }
+  if (locals.get(target)?.name !== name)
+    throw new Error("Missing target workspace");
+  for (const [path, entry] of Object.entries(lock.packages)) {
+    if (
+      entry.link !== undefined &&
+      (entry.link !== true ||
+        !path.split("/").includes("node_modules") ||
+        !locals.has(entry.resolved))
+    )
+      throw new Error("Invalid workspace link");
+  }
+  const selected = new Set([target]);
+  const queue = [lock.packages[""], locals.get(target)];
+  for (const entry of queue) {
+    for (const field of dependencyFields) {
+      for (const dependency of Object.keys(entry[field] ?? {})) {
+        const path = names.get(dependency);
+        if (path && !selected.has(path)) {
+          selected.add(path);
+          queue.push(locals.get(path));
+        }
+      }
+    }
+  }
+  // Keep every external resolution, integrity and root build dependency. Only
+  // proven unrelated local workspace records and their links are irrelevant.
+  const packages = Object.fromEntries(
+    Object.entries(lock.packages).filter(
+      ([path, entry]) =>
+        (!locals.has(path) || selected.has(path)) &&
+        (entry.link !== true || selected.has(entry.resolved)),
+    ),
+  );
+  return JSON.stringify(stable({ ...lock, packages }));
+}
 
 // Public GitHub metadata only. No LO or GitHub credentials are sent.
 export function createVersionChecker({
@@ -80,12 +185,41 @@ export function createVersionChecker({
     const build = await loadBuild();
     const heads = new Map(),
       comparisons = new Map(),
-      trees = new Map();
+      trees = new Map(),
+      blobs = new Map();
     const treeAt = (repository, commit) => {
       const key = `${repository}/${commit}`;
       if (!trees.has(key))
         trees.set(key, get(`${repository}/git/trees/${commit}?recursive=1`));
       return trees.get(key);
+    };
+    const lockAt = (repository, tree) => {
+      const entry = tree.tree.find((item) => item.path === "package-lock.json");
+      if (entry?.type !== "blob") throw new Error("Invalid lock blob");
+      const key = `${repository}/${entry.sha}`;
+      if (!blobs.has(key))
+        blobs.set(
+          key,
+          get(`${repository}/git/blobs/${entry.sha}`).then((blob) => {
+            if (
+              blob.sha !== entry.sha ||
+              blob.encoding !== "base64" ||
+              typeof blob.content !== "string" ||
+              !Number.isSafeInteger(blob.size) ||
+              blob.size < 0 ||
+              blob.size > 5 * 1024 * 1024
+            )
+              throw new Error("Invalid lock blob");
+            const content = Buffer.from(blob.content, "base64");
+            if (
+              content.length !== blob.size ||
+              content.toString("base64") !== blob.content.replace(/\s/g, "")
+            )
+              throw new Error("Incomplete lock blob");
+            return JSON.parse(content.toString("utf8"));
+          }),
+        );
+      return blobs.get(key);
     };
     const packages = await Promise.all(
       build.packages.map(async (p) => {
@@ -115,6 +249,33 @@ export function createVersionChecker({
             fingerprint(latestTree, scope[1])
           )
             return { ...base, state: "current", latestCommit: head };
+          const target = scope[1][0];
+          const otherPaths = scope[1].filter(
+            (path) => path !== "package-lock.json",
+          );
+          const builtLock = builtTree.tree.find(
+            (entry) => entry.path === "package-lock.json",
+          );
+          const latestLock = latestTree.tree.find(
+            (entry) => entry.path === "package-lock.json",
+          );
+          if (
+            target.startsWith("packages/") &&
+            builtLock.type === latestLock.type &&
+            builtLock.mode === latestLock.mode &&
+            fingerprint(builtTree, otherPaths) ===
+              fingerprint(latestTree, otherPaths)
+          ) {
+            const [before, after] = await Promise.all([
+              lockAt(p.repository, builtTree),
+              lockAt(p.repository, latestTree),
+            ]);
+            if (
+              scopedLock(before, target, p.name) ===
+              scopedLock(after, target, p.name)
+            )
+              return { ...base, state: "current", latestCommit: head };
+          }
           const key = `${p.repository}/${p.sourceCommit}...${head}`;
           if (!comparisons.has(key))
             comparisons.set(
