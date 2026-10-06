@@ -1,4 +1,4 @@
-import { Button } from "@lo-ink/ui";
+import { Button, Heading, Text, Progress, Surface, Stack } from "@lo-ink/ui";
 import { useState } from "react";
 import { SdkVersions } from "./SdkVersions.tsx";
 import {
@@ -32,7 +32,12 @@ function RunFeed({ checks }: { checks: CheckResult[] }) {
     <ol className="run-feed">
       {checks.map((check) => (
         <li key={check.id} className={check.state}>
-          <span className="feed-icon" aria-hidden="true">
+          <Text
+            as="span"
+            size="caption"
+            className="feed-icon"
+            aria-hidden="true"
+          >
             {check.state === "passed"
               ? check.evidence === "response"
                 ? "API"
@@ -42,21 +47,27 @@ function RunFeed({ checks }: { checks: CheckResult[] }) {
                 : check.state === "running"
                   ? "…"
                   : "—"}
-          </span>
+          </Text>
           <div>
-            <strong>{check.label}</strong>
+            <Text as="strong" weight="bold" size="label">
+              {check.label}
+            </Text>
             {check.bridge && (
-              <span className="feed-bridge">{check.bridge}</span>
+              <Text as="span" size="caption" className="feed-bridge">
+                {check.bridge}
+              </Text>
             )}
             {check.state === "failed" && (
-              <p className="feed-error">{check.detail}</p>
+              <Text tone="danger" size="caption" className="feed-error">
+                {check.detail}
+              </Text>
             )}
           </div>
-          <span className="feed-state">
+          <Text as="span" size="caption" className="feed-state">
             {check.state === "passed" && check.evidence === "response"
               ? "Ответ API"
               : labels[check.state]}
-          </span>
+          </Text>
         </li>
       ))}
     </ol>
@@ -129,10 +140,10 @@ export function RunPage({
         </Button>
         {resumable && !active && (
           <>
-            <p className="note">
+            <Text tone="secondary" size="caption">
               Сохраним готовые результаты и продолжим незавершённые шаги. Для
               прерванных действий снова потребуется подтверждение.
-            </p>
+            </Text>
             <Button
               variant="secondary"
               disabled={Boolean(interaction) || hasRecoveryDebt(report)}
@@ -143,26 +154,33 @@ export function RunPage({
           </>
         )}
         {report?.resumeError && !active && (
-          <p role="status" className="feed-error">
+          <Text
+            tone="danger"
+            size="caption"
+            role="status"
+            className="feed-error"
+          >
             Не удалось продолжить: {report.resumeError}
-          </p>
+          </Text>
         )}
         {(report?.resumeBlocked || hasRecoveryDebt(report)) && !active && (
-          <p className="note">
+          <Text tone="secondary" size="caption">
             {resumable
               ? "Восстановление после остановки не подтверждено. При продолжении сначала повторим очистку; готовые результаты останутся."
               : "Восстановление после остановки не подтверждено. Продолжение недоступно; заново откройте приложение в LO и начните новый прогон."}
-          </p>
+          </Text>
         )}
         {active && summary && (
           <>
             <div className="run-progress-label">
-              <strong>{summary.progress}%</strong>
-              <span>
+              <Text as="strong" weight="bold" size="title">
+                {summary.progress}%
+              </Text>
+              <Text as="span" size="caption">
                 {summary.processed} / {summary.total}
-              </span>
+              </Text>
             </div>
-            <progress
+            <Progress
               max={100}
               value={summary.progress}
               aria-label="Выполнение проверки"
@@ -170,7 +188,12 @@ export function RunPage({
           </>
         )}
         {active && (
-          <p className="run-current" role="status">
+          <Text
+            tone="secondary"
+            size="label"
+            className="run-current"
+            role="status"
+          >
             {stopping
               ? "Удаляем тестовые данные…"
               : current
@@ -178,7 +201,7 @@ export function RunPage({
                 : resuming
                   ? "Восстанавливаем подключение…"
                   : "Запускаем…"}
-          </p>
+          </Text>
         )}
       </section>
       {interaction && (
@@ -190,12 +213,17 @@ export function RunPage({
       )}
       {active && startedChecks.length > 0 && (
         <section className="run-feed-panel" aria-label="Ход проверки">
-          <h2>Сейчас проверяется</h2>
-          <p className="feed-current">
+          <Heading level={2}>Сейчас проверяется</Heading>
+          <Text
+            tone="primary"
+            size="body"
+            weight="medium"
+            className="feed-current"
+          >
             {current
               ? `${current.bridge ? `${current.bridge} · ` : ""}${current.label}`
               : "Завершение"}
-          </p>
+          </Text>
           <RunFeed checks={startedChecks.slice(-7)} />
           {startedChecks.length > 7 && (
             <details>
@@ -207,76 +235,93 @@ export function RunPage({
       )}
       {summary && !active && (
         <>
-          <section
+          <Surface
+            padding={0}
             className="group run-outcome"
             aria-label="Результат проверки"
           >
             <div className="run-score">
-              <strong>
+              <Text as="strong" weight="bold" size="display">
                 {bridgeTotal
                   ? `${Math.floor((100 * confirmed) / bridgeTotal)}%`
                   : "—"}
-              </strong>
-              <div>
-                <h2>
+              </Text>
+              <Stack gap={1}>
+                <Heading level={2}>
                   {report?.state === "cancelled"
                     ? "Проверка остановлена"
                     : "Покрытие мостов"}
-                </h2>
-                <p>
+                </Heading>
+                <Text tone="secondary" size="label">
                   Подтверждено {confirmed} из {bridgeTotal} проверок мостов
-                </p>
-              </div>
+                </Text>
+              </Stack>
             </div>
             <div className="bridge-coverage">
               {coverage.map((item) => (
-                <p key={item.bridge}>
-                  <span>{item.bridge}</span>
-                  <strong>
+                <Text tone="secondary" size="label" key={item.bridge}>
+                  <Text as="span" size="caption">
+                    {item.bridge}
+                  </Text>
+                  <Text as="strong" weight="bold" size="label">
                     {item.confirmed} / {item.total}
-                  </strong>
-                </p>
+                  </Text>
+                </Text>
               ))}
             </div>
             <div className="run-counts">
-              <span>
-                <strong>{summary.passed}</strong>без ошибок
-              </span>
-              <span>
-                <strong>{summary.failed}</strong>ошибок
-              </span>
-              <span>
-                <strong>{summary.skipped}</strong>пропущено
-              </span>
-              <span>
-                <strong>{summary.manual}</strong>не проверено
-              </span>
+              <Text as="span" size="caption">
+                <Text as="strong" weight="bold" size="title">
+                  {summary.passed}
+                </Text>
+                без ошибок
+              </Text>
+              <Text as="span" size="caption">
+                <Text as="strong" weight="bold" size="title">
+                  {summary.failed}
+                </Text>
+                ошибок
+              </Text>
+              <Text as="span" size="caption">
+                <Text as="strong" weight="bold" size="title">
+                  {summary.skipped}
+                </Text>
+                пропущено
+              </Text>
+              <Text as="span" size="caption">
+                <Text as="strong" weight="bold" size="title">
+                  {summary.manual}
+                </Text>
+                не проверено
+              </Text>
             </div>
-            <p className="note">
+            <Text tone="secondary" size="caption">
               Пропуски и непроверенные эффекты снижают покрытие. Синтетические
               тесты и ответы API без подтверждения эффекта его не повышают.
-            </p>
+            </Text>
             {report?.state === "cancelled" && (
-              <p className="note">
+              <Text tone="secondary" size="caption">
                 Обработано {summary.processed} из {summary.total} пунктов.
-              </p>
+              </Text>
             )}
             <Button variant="secondary" disabled={exporting} onClick={onExport}>
               {exporting ? "Сохраняем…" : "Скачать отчёт"}
             </Button>
-          </section>
-          <h2 className="report-heading">Отчёт</h2>
+          </Surface>
+          <Heading level={2} className="report-heading">
+            Отчёт
+          </Heading>
           {deferredChecks.length > 0 && (
-            <section className="group deferred-checks">
-              <h3>Завершающие проверки</h3>
-              <p className="note">
+            <Surface padding={0} className="group deferred-checks">
+              <Heading level={3}>Завершающие проверки</Heading>
+              <Text tone="secondary" size="caption">
                 Переход в чат и завершающие вызовы могут закрыть приложение.
                 После каждого заново откройте LO SDK Test: сохранённая попытка
                 продолжится. Доставку уже отправленных файлов и закрытие
                 подтвердите вручную; данные проверим у бота по уникальному коду.
                 Повторная кнопка продолжит незавершённую попытку без новой
                 отправки.
-              </p>
+              </Text>
               {deferredChecks.map((check) => (
                 <Button
                   key={check.id}
@@ -287,7 +332,7 @@ export function RunPage({
                   {check.label}
                 </Button>
               ))}
-            </section>
+            </Surface>
           )}
           <div className="filters report-filters" aria-label="Фильтр отчёта">
             {(Object.keys(filters) as (keyof typeof filters)[]).map((name) => (
@@ -303,8 +348,8 @@ export function RunPage({
           </div>
           {groups.map((group) => (
             <section key={group} className="run-report-group">
-              <h3>{group}</h3>
-              <div className="group">
+              <Heading level={3}>{group}</Heading>
+              <Surface padding={0} className="group">
                 {shown
                   .filter((c) => c.group === group)
                   .map((check) => (
@@ -313,17 +358,39 @@ export function RunPage({
                       className={`run-check ${check.state}`}
                     >
                       <summary>
-                        <span className="run-check-name">{check.label}</span>
-                        <span className="run-state">
+                        <Text
+                          as="span"
+                          size="label"
+                          weight="medium"
+                          className="run-check-name"
+                        >
+                          {check.label}
+                        </Text>
+                        <Text
+                          as="span"
+                          size="caption"
+                          tone={
+                            check.state === "passed"
+                              ? "success"
+                              : check.state === "failed"
+                                ? "danger"
+                                : "secondary"
+                          }
+                          className="run-state"
+                        >
                           {check.state === "passed" &&
                           check.evidence === "response"
                             ? "Ответ API"
                             : labels[check.state]}
-                        </span>
+                        </Text>
                       </summary>
                       <div className="run-check-detail">
-                        <code>{check.id}</code>
-                        <p>{check.detail}</p>
+                        <Text as="code" family="mono" size="caption">
+                          {check.id}
+                        </Text>
+                        <Text tone="secondary" size="label">
+                          {check.detail}
+                        </Text>
                         {check.state === "manual" &&
                           /:(close|sendData)$/.test(check.id) && (
                             <Button
@@ -334,22 +401,22 @@ export function RunPage({
                             </Button>
                           )}
                         {check.durationMs > 0 && (
-                          <p className="note">
+                          <Text tone="secondary" size="caption">
                             {(check.durationMs / 1000).toFixed(2)} с
-                          </p>
+                          </Text>
                         )}
                       </div>
                     </details>
                   ))}
-              </div>
+              </Surface>
             </section>
           ))}
           {!shown.length && (
-            <p className="empty">
+            <Text tone="secondary" size="label" className="empty">
               {filter === "Ошибки"
                 ? "Ошибок нет. Непроверенные шаги указаны отдельно."
                 : "Нет таких результатов."}
-            </p>
+            </Text>
           )}
         </>
       )}

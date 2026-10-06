@@ -101,6 +101,15 @@ export default tseslint.config(
   {
     files: ["web/**/*.{ts,tsx}"],
     rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "JSXOpeningElement[name.name=/^(button|input|textarea|dialog|progress|h[1-6]|p|span|strong|pre|code)$/]",
+          message:
+            "Use the published LO UI primitive for controls and typography.",
+        },
+      ],
       "no-restricted-globals": [
         "error",
         "process",

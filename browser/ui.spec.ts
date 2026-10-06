@@ -56,7 +56,7 @@ for (const scheme of ["light", "dark"] as const) {
           weight: getComputedStyle(element).fontWeight,
           height: getComputedStyle(element).minHeight,
         })),
-      ).toEqual({ size: "14px", weight: "600", height: "44px" });
+      ).toEqual({ size: "14px", weight: "500", height: "44px" });
       const text = page.getByText("Основной · body", { exact: true });
       const catalog = page.locator(".ui-catalog");
       expect(
@@ -117,7 +117,40 @@ for (const scheme of ["light", "dark"] as const) {
         width: style.outlineWidth,
       };
     });
-    expect(focus).toEqual({ style: "solid", offset: "-3px", width: "3px" });
+    expect(focus).toEqual({ style: "solid", offset: "2px", width: "3px" });
+    await page.getByRole("button", { name: "UI", exact: true }).click();
+    await page.getByRole("button", { name: "Открыть диалог" }).click();
+    const dialog = page.getByRole("dialog", { name: "Пример диалога" });
+    await expect(dialog).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Закрыть диалог" }),
+    ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(dialog).not.toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Открыть диалог" }),
+    ).toBeFocused();
+    for (const section of await page.locator(".ui-demo").all()) {
+      expect(
+        await section.evaluate((e) => getComputedStyle(e).borderTopStyle),
+      ).toBe("solid");
+    }
+    await page.evaluate(() => document.fonts.ready);
+    expect(
+      await page.evaluate(() => document.fonts.check('400 16px "LO Pro UI"')),
+    ).toBe(true);
+    expect(
+      await page
+        .getByRole("heading", { name: "UI компоненты" })
+        .evaluate((e) => getComputedStyle(e).fontFamily),
+    ).toContain("LO Pro UI");
+    for (const image of await page
+      .locator('.ui-demo[aria-label="AppIcon"] img')
+      .all()) {
+      expect(
+        await image.evaluate((e) => (e as HTMLImageElement).naturalWidth),
+      ).toBeGreaterThan(0);
+    }
     expect(errors).toEqual([]);
   });
 }
