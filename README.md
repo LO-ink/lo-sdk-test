@@ -81,3 +81,8 @@ themes. Deployment waits for this browser gate as well as code checks.
 The native palette keeps its brand accent; white-label default controls use the
 UI package's accessible web fill. Explicit custom host action/actionText pairs
 are preserved; the host controls their contrast.
+
+## Secretary integration check
+
+The [dedicated Secretary flow](docs/secretary.md) verifies owner-scoped incoming,
+review draft and server sending evidence without sharing a working bot consumer.

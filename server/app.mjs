@@ -12,6 +12,7 @@ import {
   Unavailable,
 } from "@lo-ink/bot-sdk";
 import { createLoHttpBotTransport } from "@lo-ink/bot-http-lo";
+import { createSecretaryFlow } from "./secretary.mjs";
 import { conformance } from "./conformance.mjs";
 import { createVersionChecker } from "./versions.mjs";
 import { GoVerifierUnavailable } from "./initdata-go.mjs";
@@ -110,7 +111,10 @@ function errorResponse(error) {
     ];
   if (error instanceof BotError)
     return [400, { code: error.code, message: error.message }];
-  if (error instanceof RequestError)
+  if (
+    error instanceof RequestError ||
+    [400, 403, 404, 409, 410, 503].includes(error.status)
+  )
     return [error.status, { message: error.message }];
   return [500, { message: "Сервер не выполнил проверку" }];
 }
@@ -138,6 +142,7 @@ export function createHandler(configuration = process.env, dependencies = {}) {
   const budgets = new Map();
   const reports = new Map();
   let polling = false;
+  const secretaryFlow = createSecretaryFlow(configuration, dependencies);
   const client = botConfigured
     ? createBotClient(
         createLoHttpBotTransport({
@@ -340,6 +345,12 @@ export function createHandler(configuration = process.env, dependencies = {}) {
               metadata: Boolean(previous?.fileMetadata),
             },
           });
+          return;
+        }
+        if (url.pathname === "/api/secretary") {
+          const current = session(request);
+          const body = await readJson(request, 1024);
+          json(response, 200, await secretaryFlow(current.userId, body));
           return;
         }
         if (url.pathname === "/api/consent") {

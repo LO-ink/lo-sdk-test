@@ -19,6 +19,7 @@ COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/server ./server
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/package.json ./package.json
+RUN mkdir -p /var/lib/lo-sdk-test && chown node:node /var/lib/lo-sdk-test && chmod 700 /var/lib/lo-sdk-test
 USER node
 EXPOSE 5407
 CMD ["node", "server/index.mjs"]

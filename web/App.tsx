@@ -9,6 +9,7 @@ import {
 import { createAdapter } from "@lo-ink/adapter-lo";
 import { cases, events, operationNames } from "./cases.ts";
 import { applyPalette } from "./theme.ts";
+import { SecretaryPage } from "./SecretaryPage.tsx";
 import { UiPage } from "./UiPage.tsx";
 import { RunPage } from "./RunPage.tsx";
 import {
@@ -1122,7 +1123,13 @@ export function App() {
           role="group"
           aria-label="Ручные проверки"
         >
-          {["Приложение LO", "Бот", "Данные запуска", "Журнал"].map((name) => (
+          {[
+            "Приложение LO",
+            "Бот",
+            "Секретарь",
+            "Данные запуска",
+            "Журнал",
+          ].map((name) => (
             <Button
               key={name}
               variant={tab === name ? "primary" : "secondary"}
@@ -1141,6 +1148,9 @@ export function App() {
       )}
       <main>
         {tab === "UI" && <UiPage />}
+        {tab === "Секретарь" && (
+          <SecretaryPage authenticated={authenticated} request={api} />
+        )}
         {tab === "Все проверки" && (
           <RunPage
             report={automatedRun}
