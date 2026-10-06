@@ -2,11 +2,11 @@
 
 A mini-app for checking LO SDKs, native bridges and the Bot API. Hosted at [sdk-test.zay.media](https://sdk-test.zay.media).
 
-Run the guided checks to see progress, respond to permissions and confirmations, and download a report. Audio, vibration, colors and gestures require confirmation of the observed device effect. A successful API response alone does not establish that effect. Skipped checks remain unverified. The manual tab runs individual methods.
+Run the guided checks to see progress, respond to permissions and confirmations, and download a report. Audio, vibration, colors and gestures require confirmation of the observed device effect. A successful API response alone does not establish that effect. Skipped checks remain unverified. The manual tab runs individual methods. The UI tab shows all twelve published UI primitives, including disabled, loading, validation, icon and typography states. Its examples work locally without bridge or Bot API calls; the theme selector applies only to the gallery.
 
 A stopped run offers Continue and a separate Start over action. Completed results, run identity and progress stay intact, including after reopening. Continuation verifies a fresh session and requests fresh bot consent; it never restores permission from browser storage. Run-owned cleanup state is saved before mutations so interrupted storage and screen changes can be restored before continuing. An unresolved restoration is shown explicitly and cannot be discarded by starting another run.
 
-Progress is retained for 24 hours and is bound to the SDK dependency set, the exact check plan and the same LO app/user. Interrupted bot writes require a specific retry choice because a lost response does not prove that no message was sent. Missing server-owned file/message references remain unverified instead of repeating completed sends. A compatible, cleanly stopped 0.4.21 report can be continued after this update.
+Progress is retained for 24 hours and is bound to the SDK dependency set, the exact check plan and the same LO app/user. Interrupted bot writes require a specific retry choice because a lost response does not prove that no message was sent. Missing server-owned file/message references remain unverified instead of repeating completed sends. A compatible, cleanly stopped 0.4.21 report can be continued. The reviewed UI-only 0.4.22 → 0.4.23 upgrade also preserves reports because the bridge packages and check plan are unchanged; other dependency changes still reject continuation. Deferred delivery tickets remain bound to their original build.
 
 Native and compatibility bridges are tested independently. The report records platform limitations.
 
@@ -34,6 +34,8 @@ Node and Go independently verify each signed launch before issuing a session. A 
 
 ```sh
 make ci
+npx playwright install chromium
+make browser
 docker build --platform linux/amd64 -t lo-sdk-test:local .
 make container IMAGE=lo-sdk-test:local
 ```
@@ -72,3 +74,10 @@ The application uses the published `@lo-ink/ui` Button and TextField components
 and `@lo-ink/design-tokens` through the UI stylesheet. Host theme colors map to
 the SDK semantic tokens; run controls, consent dialogs and search share those
 components. The version panel checks both UI packages against their own sources.
+
+`make browser` verifies both themes at 320 px, navigation hover/focus, control
+geometry and typography, local interactions, validation, and isolated gallery
+themes. Deployment waits for this browser gate as well as code checks.
+The native palette keeps its brand accent; white-label default controls use the
+UI package's accessible web fill. Explicit custom host action/actionText pairs
+are preserved; the host controls their contrast.

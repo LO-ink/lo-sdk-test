@@ -22,6 +22,10 @@ const legacyDependencies =
     .split("|")
     .sort()
     .join("|");
+// This reviewed UI-only upgrade leaves the execution suite and bridge packages unchanged.
+const uiUpgradeDependencies = legacyDependencies
+  .replace("@lo-ink/design-tokens@0.1.1", "@lo-ink/design-tokens@0.2.0")
+  .replace("@lo-ink/ui@0.1.1", "@lo-ink/ui@0.2.0");
 export function dependencyKey(
   packages: ReadonlyArray<{ name: string; version: string }>,
 ): string {
@@ -117,8 +121,16 @@ export function readRun(
     const legacy =
       saved.schema === undefined &&
       saved.appVersion === "0.4.21" &&
-      dependencies === legacyDependencies;
-    if (!legacy && (saved.schema !== 1 || saved.dependencies !== dependencies))
+      [legacyDependencies, uiUpgradeDependencies].includes(dependencies);
+    const reviewedUiUpgrade =
+      saved.appVersion === "0.4.22" &&
+      saved.dependencies === legacyDependencies &&
+      dependencies === uiUpgradeDependencies;
+    if (
+      !legacy &&
+      (saved.schema !== 1 ||
+        (saved.dependencies !== dependencies && !reviewedUiUpgrade))
+    )
       return null;
     const report = saved.report;
     if (

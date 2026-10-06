@@ -1,5 +1,5 @@
 {
-  "appVersion": "0.4.22",
+  "appVersion": "0.4.23",
   "source": "npm-registry",
   "repositories": [
     {
@@ -64,17 +64,17 @@
     },
     {
       "name": "@lo-ink/ui",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "repository": "lo-ui",
-      "sourceCommit": "acfb2f0b5df6681e768effe8a37fe669e25b75cb",
-      "integrity": "sha512-zzz3QTOpKl8x9TFzM2y5iXnBAcuB/N6+OIEu5MDU3AIcktZF1OrsrHx0V/FpHVwhcIVHC5xknjOCwX7Bnu0JaA=="
+      "sourceCommit": "431ce3f8ec95d6b67a71d5483135a4cda818116a",
+      "integrity": "sha512-GMjw1PqjvdLWGZxMSDGVnr3AMPhcmgGu2RgxYG/8/rabwCpxSvNEIicyoHB886UrT7rBUIcF+KcTDzAOK+7Rkw=="
     },
     {
       "name": "@lo-ink/design-tokens",
-      "version": "0.1.1",
+      "version": "0.2.0",
       "repository": "lo-ui",
-      "sourceCommit": "acfb2f0b5df6681e768effe8a37fe669e25b75cb",
-      "integrity": "sha512-7D9ozDH9NfQi7IQKaVv23+cAVkHOEpJKZpukL5Y1xqRNL5epcUXEzOqJZNWN1zKa4tkRx85v24EOFHZVfZLSHw=="
+      "sourceCommit": "431ce3f8ec95d6b67a71d5483135a4cda818116a",
+      "integrity": "sha512-E6cSvln/NveCqbvlRYaVOjkfo78jvN4fOYZ83fxm7NuF6Jlya45JN/HQzuLkVqahCoLSPnuGj5w7Fkr+A6BFvQ=="
     }
   ],
   "goVerifier": {

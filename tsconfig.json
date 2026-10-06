@@ -12,5 +12,11 @@
     "resolveJsonModule": true,
     "types": ["vite/client", "node"]
   },
-  "include": ["web", "test", "vite.config.ts"]
+  "include": [
+    "web",
+    "test",
+    "vite.config.ts",
+    "browser",
+    "playwright.config.ts"
+  ]
 }

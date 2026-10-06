@@ -503,3 +503,117 @@ test("a crash-restored cleanup ledger prevents replacing the run even without a 
   fireEvent.click(page.getByRole("button", { name: "Продолжить проверку" }));
   assert.equal(continued, 1);
 });
+
+const { UiPage } = await import("../web/UiPage.tsx");
+const publicUi = await import("@lo-ink/ui");
+test("the UI catalog covers all public primitives with local, isolated interactions", () => {
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests++;
+    throw new Error("Catalog must stay local");
+  };
+  const hostTheme = document.documentElement.dataset.loTheme;
+  const page = render(<UiPage />);
+  for (const name of [
+    "Button",
+    "TextField",
+    "Switch · Checkbox",
+    "List · Cell",
+    "AppIcon",
+    "Heading · Text",
+    "EmptyState",
+    "Stack · Inline",
+  ])
+    assert.ok(page.getByRole("region", { name }));
+  const demonstrated = [
+    ...page.container.querySelectorAll(".ui-demo > h3"),
+  ].flatMap((heading) => heading.textContent!.split(" · "));
+  assert.deepEqual(demonstrated.sort(), Object.keys(publicUi).sort());
+  fireEvent.click(page.getByRole("button", { name: "Тёмная" }));
+  const catalog = page
+    .getByRole("heading", { name: "UI компоненты" })
+    .closest(".ui-catalog") as HTMLElement;
+  assert.equal(catalog.dataset.loTheme, "dark");
+  assert.equal(document.documentElement.dataset.loTheme, hostTheme);
+  fireEvent.click(page.getByRole("button", { name: "Светлая" }));
+  assert.equal(catalog.dataset.loTheme, "light");
+  fireEvent.click(page.getByRole("button", { name: "Как в LO" }));
+  assert.equal(catalog.dataset.loTheme, undefined);
+  assert.equal(catalog.classList.contains("lo-ui-root"), false);
+  for (const name of [
+    "primary",
+    "secondary",
+    "danger",
+    "quiet",
+    "Маленькая",
+    "С иконкой",
+    "Кнопка на всю ширину с длинным названием",
+  ])
+    fireEvent.click(page.getByRole("button", { name }));
+  assert.ok(page.getByText("Нажатий: 7"));
+  const field = page.getByRole("textbox", { name: "Название" });
+  fireEvent.change(field, { target: { value: "x" } });
+  assert.equal(field.getAttribute("aria-invalid"), "true");
+  fireEvent.change(field, { target: { value: "Example" } });
+  assert.equal(field.getAttribute("aria-invalid"), null);
+  fireEvent.click(page.getByRole("switch", { name: "Уведомления" }));
+  assert.equal(
+    (
+      page.getByRole("switch", {
+        name: "Уведомления в строке",
+      }) as HTMLInputElement
+    ).checked,
+    false,
+  );
+  fireEvent.click(page.getByRole("switch", { name: "Уведомления в строке" }));
+  fireEvent.click(page.getByRole("checkbox", { name: "Закрытый список" }));
+  assert.equal(
+    (
+      page.getByRole("checkbox", {
+        name: "Закрытый список в строке",
+      }) as HTMLInputElement
+    ).checked,
+    true,
+  );
+  fireEvent.click(
+    page.getByRole("checkbox", { name: "Закрытый список в строке" }),
+  );
+  fireEvent.click(page.getByRole("button", { name: /Открыть пример/ }));
+  fireEvent.click(page.getByRole("button", { name: "Отдельное действие" }));
+  fireEvent.click(page.getByRole("button", { name: "Выбрать" }));
+  assert.ok(page.getByText("Нажатий: 10"));
+  fireEvent.click(page.getByRole("button", { name: "Создать пример" }));
+  assert.ok(page.getByText("Пример создан"));
+  fireEvent.click(
+    page.getByRole("button", { name: "Показать пустое состояние" }),
+  );
+  assert.ok(page.getByRole("heading", { name: "Пока ничего нет" }));
+  assert.equal(
+    (
+      page.getByRole("checkbox", {
+        name: "Отключённый checkbox: выбран",
+      }) as HTMLInputElement
+    ).disabled,
+    true,
+  );
+  assert.equal(
+    (page.getByRole("textbox", { name: "Только чтение" }) as HTMLInputElement)
+      .readOnly,
+    true,
+  );
+  assert.equal(requests, 0);
+});
+
+test("the application exposes the UI page separately from manual checks", async () => {
+  versionsUnavailable();
+  const page = render(<App />);
+  fireEvent.click(page.getByRole("button", { name: "UI" }));
+  assert.ok(page.getByRole("heading", { name: "UI компоненты" }));
+  assert.equal(page.queryByRole("group", { name: "Ручные проверки" }), null);
+  assert.equal(
+    page.getByRole("button", { name: "UI" }).getAttribute("aria-current"),
+    "page",
+  );
+  fireEvent.click(page.getByRole("button", { name: "Вручную" }));
+  assert.ok(page.getByRole("group", { name: "Ручные проверки" }));
+});
