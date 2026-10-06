@@ -1,37 +1,38 @@
 {
-  "appVersion": "0.4.20",
+  "appVersion": "0.4.21",
   "source": "npm-registry",
   "repositories": [
     {
       "name": "lo-bot-sdk",
-      "url": "https://github.com/LO-ink/lo-bot-sdk",
-      "commit": "7a26b49fc00410f676d8152ede0ac6eff2db7e0e"
+      "url": "https://github.com/LO-ink/lo-bot-sdk"
     },
     {
       "name": "lo-miniapp-sdk",
-      "url": "https://github.com/LO-ink/lo-miniapp-sdk",
-      "commit": "8254edfaeb11c8ce8e108de9099113500096e125"
+      "url": "https://github.com/LO-ink/lo-miniapp-sdk"
     },
     {
       "name": "lo-platform-adapters",
-      "url": "https://github.com/LO-ink/lo-platform-adapters",
-      "commit": "446735dca05675502de3d242cf1e7f8d785b0a5d"
+      "url": "https://github.com/LO-ink/lo-platform-adapters"
+    },
+    {
+      "name": "lo-ui",
+      "url": "https://github.com/LO-ink/lo-ui"
     }
   ],
   "packages": [
     {
       "name": "@lo-ink/bot-sdk",
-      "version": "0.4.3",
+      "version": "0.4.4",
       "repository": "lo-bot-sdk",
-      "sourceCommit": "7a26b49fc00410f676d8152ede0ac6eff2db7e0e",
-      "integrity": "sha512-Vg6peYdw7xHIOlmRxq5DwaGkVmkhZac4gh+HrQqEPRGslZ0dKrpCbemXRWtENnEK9RRJgsATN338iY1GzFzleA=="
+      "sourceCommit": "dce0b6403a539678ce40362fb926f19e08e25af2",
+      "integrity": "sha512-TCJKm/A3ih2g1G2lbNngopnNWsQ1Es/rZcomIiLOFE3LiYME3r+pmlPdlZX0BL7UZgKoh1DoTBg0a5/zonljZg=="
     },
     {
       "name": "@lo-ink/miniapp-sdk",
-      "version": "0.21.0",
+      "version": "0.21.1",
       "repository": "lo-miniapp-sdk",
-      "sourceCommit": "8254edfaeb11c8ce8e108de9099113500096e125",
-      "integrity": "sha512-b2owLHuTEw8fder+/xAlGp4ccrZZN3o5Np5zQyNv60krnNAPJAyJpQ2nvDqPNSZN9F6haNtZKnY/EDvC0mUCmg=="
+      "sourceCommit": "478935c0229b05163a15d6c4fcae50437768dc20",
+      "integrity": "sha512-mq6YY+BrI5W46JUiVCIcCfLkCZj11UImVgKr8VMvF9RAZHGH1akx+G89DnydBsMP8dTENSyeKJ0vlC/YYbmdNA=="
     },
     {
       "name": "@lo-ink/adapter-lo",
@@ -56,10 +57,24 @@
     },
     {
       "name": "@lo-ink/bot-http-lo",
-      "version": "0.5.0",
+      "version": "0.5.1",
       "repository": "lo-platform-adapters",
-      "sourceCommit": "446735dca05675502de3d242cf1e7f8d785b0a5d",
-      "integrity": "sha512-6LgwZHXX6IIWDWucld/yRPOw7iHUyHSrlwCXc44M3TUo+fYygyRw2e9Rx0SJJr5m5Bhg8c8eu0utG2rcUQOn/Q=="
+      "sourceCommit": "04d961129def535cbeec86694930280af126ba12",
+      "integrity": "sha512-Rbb/u3c3jRbcGkeA6imiFpxm/HklP1oHjXDkyfKZ68NA3vMI8kBjQQFPHlNezw0qjzQWRYJjLxqECOJH49E/Xw=="
+    },
+    {
+      "name": "@lo-ink/ui",
+      "version": "0.1.1",
+      "repository": "lo-ui",
+      "sourceCommit": "acfb2f0b5df6681e768effe8a37fe669e25b75cb",
+      "integrity": "sha512-zzz3QTOpKl8x9TFzM2y5iXnBAcuB/N6+OIEu5MDU3AIcktZF1OrsrHx0V/FpHVwhcIVHC5xknjOCwX7Bnu0JaA=="
+    },
+    {
+      "name": "@lo-ink/design-tokens",
+      "version": "0.1.1",
+      "repository": "lo-ui",
+      "sourceCommit": "acfb2f0b5df6681e768effe8a37fe669e25b75cb",
+      "integrity": "sha512-7D9ozDH9NfQi7IQKaVv23+cAVkHOEpJKZpukL5Y1xqRNL5epcUXEzOqJZNWN1zKa4tkRx85v24EOFHZVfZLSHw=="
     }
   ],
   "goVerifier": {

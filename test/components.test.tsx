@@ -85,6 +85,16 @@ test("confirmation requires an explicit choice and releases the dialog", () => {
   );
   const dialog = page.getByRole("dialog") as HTMLDialogElement;
   assert.equal(dialog.open, true);
+  assert.ok(
+    page
+      .getByRole("button", { name: "Отмена" })
+      .classList.contains("lo-ui-button--secondary"),
+  );
+  assert.ok(
+    page
+      .getByRole("button", { name: "Продолжить" })
+      .classList.contains("lo-ui-button--primary"),
+  );
   fireEvent.click(page.getByRole("button", { name: "Отмена" }));
   assert.equal(cancelled, 1);
   assert.equal(accepted, 0);
@@ -128,6 +138,10 @@ test("interaction gates empty input, starts from a click and keeps stop availabl
     name: "Проверить",
   }) as HTMLButtonElement;
   assert.equal(start.disabled, true);
+  assert.ok(start.classList.contains("lo-ui-button"));
+  assert.ok(
+    page.getByLabelText("Text").classList.contains("lo-ui-field__input"),
+  );
   fireEvent.change(page.getByLabelText("Text"), { target: { value: "hello" } });
   assert.equal(start.disabled, false);
   fireEvent.click(start);

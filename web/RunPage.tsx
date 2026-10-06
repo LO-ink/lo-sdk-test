@@ -1,3 +1,4 @@
+import { Button } from "@lo-ink/ui";
 import { useState } from "react";
 import { SdkVersions } from "./SdkVersions.tsx";
 import {
@@ -104,7 +105,7 @@ export function RunPage({
   return (
     <>
       <section className="run-panel" aria-label="Запуск проверки">
-        <button
+        <Button
           className="run-start"
           disabled={stopping || (!active && Boolean(interaction))}
           onClick={active ? onStop : onStart}
@@ -116,7 +117,7 @@ export function RunPage({
               : report
                 ? "Проверить снова"
                 : "Проверить все мосты"}
-        </button>
+        </Button>
         {active && summary && (
           <>
             <div className="run-progress-label">
@@ -222,13 +223,9 @@ export function RunPage({
                 Обработано {summary.processed} из {summary.total} пунктов.
               </p>
             )}
-            <button
-              className="secondary"
-              disabled={exporting}
-              onClick={onExport}
-            >
+            <Button variant="secondary" disabled={exporting} onClick={onExport}>
               {exporting ? "Сохраняем…" : "Скачать отчёт"}
-            </button>
+            </Button>
           </section>
           <h2 className="report-heading">Отчёт</h2>
           {deferredChecks.length > 0 && (
@@ -243,27 +240,27 @@ export function RunPage({
                 отправки.
               </p>
               {deferredChecks.map((check) => (
-                <button
+                <Button
                   key={check.id}
-                  className="secondary"
+                  variant="secondary"
                   onClick={() => onDeferred(check.id)}
                 >
                   {check.bridge ? `${check.bridge} · ` : ""}
                   {check.label}
-                </button>
+                </Button>
               ))}
             </section>
           )}
           <div className="filters report-filters" aria-label="Фильтр отчёта">
             {(Object.keys(filters) as (keyof typeof filters)[]).map((name) => (
-              <button
+              <Button
                 key={name}
-                className={filter === name ? "selected" : "secondary"}
+                variant={filter === name ? "primary" : "secondary"}
                 aria-pressed={filter === name}
                 onClick={() => setFilter(name)}
               >
                 {name}
-              </button>
+              </Button>
             ))}
           </div>
           {groups.map((group) => (
@@ -291,12 +288,12 @@ export function RunPage({
                         <p>{check.detail}</p>
                         {check.state === "manual" &&
                           /:(close|sendData)$/.test(check.id) && (
-                            <button
-                              className="secondary"
+                            <Button
+                              variant="secondary"
                               onClick={() => onDeferred(check.id)}
                             >
                               Проверить после прогона
-                            </button>
+                            </Button>
                           )}
                         {check.durationMs > 0 && (
                           <p className="note">

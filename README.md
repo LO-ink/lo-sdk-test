@@ -58,3 +58,13 @@ statements, 70% functions, or 70% branches. Reports are uploaded as CI artifacts
 `make go-ci` checks the launch verifier with race tests, static analysis, at least
 85% statement coverage and vulnerability scanning. `make container` verifies the
 release image using `BUILD_REVISION` from the commit being deployed.
+
+Repository policy checks require Python 3 for Python comment tokenization. YAML
+comments are parsed as YAML; embedded scripts and localized scalar values retain
+their own language. LO credentials are checked by the root Gitleaks configuration
+and a synthetic scanner regression before each repository scan.
+
+The application uses the published `@lo-ink/ui` Button and TextField components
+and `@lo-ink/design-tokens` through the UI stylesheet. Host theme colors map to
+the SDK semantic tokens; run controls, consent dialogs and search share those
+components. The version panel checks both UI packages against their own sources.

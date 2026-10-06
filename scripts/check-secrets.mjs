@@ -1,8 +1,14 @@
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  writeFileSync,
+  rmSync,
+  readFileSync,
+  mkdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 const platform = process.platform;
 const architecture = { arm64: "arm64", x64: "x64" }[process.arch];
@@ -36,6 +42,44 @@ try {
     temp,
     "gitleaks",
   ]);
+  const config = resolve(".gitleaks.toml");
+  const fixture = join(temp, "fixture");
+  mkdirSync(fixture);
+  const candidate = `123456:${"A".repeat(43)}`;
+  for (const [value, expected] of [
+    [candidate, 1],
+    [`${candidate}A`, 0],
+  ]) {
+    writeFileSync(
+      join(fixture, "credential.json"),
+      JSON.stringify({ credential: value }),
+    );
+    const probe = spawnSync(
+      join(temp, "gitleaks"),
+      [
+        "dir",
+        fixture,
+        "--config",
+        config,
+        "--redact",
+        "--no-banner",
+        "--report-format",
+        "json",
+        "--report-path",
+        join(temp, "probe.json"),
+      ],
+      { encoding: "utf8" },
+    );
+    if (probe.error || probe.signal || probe.status !== expected)
+      throw new Error("LO credential scanner regression failed");
+    if (
+      expected === 1 &&
+      !JSON.parse(readFileSync(join(temp, "probe.json"), "utf8")).some(
+        (finding) => finding.RuleID === "lo-bot-token",
+      )
+    )
+      throw new Error("LO credential rule is not active");
+  }
   const result = spawnSync(
     join(temp, "gitleaks"),
     ["dir", ".", "--redact", "--no-banner"],

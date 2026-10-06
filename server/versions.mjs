@@ -22,6 +22,22 @@ const packageSources = new Map([
     ["lo-platform-adapters", ["packages/compat"]],
   ],
   ["@lo-ink/bot-http-lo", ["lo-platform-adapters", ["packages/bot-http-lo"]]],
+  [
+    "@lo-ink/ui",
+    ["lo-ui", ["packages/ui", "LICENSE", "package.json", "package-lock.json"]],
+  ],
+  [
+    "@lo-ink/design-tokens",
+    [
+      "lo-ui",
+      [
+        "packages/design-tokens",
+        "LICENSE",
+        "package.json",
+        "package-lock.json",
+      ],
+    ],
+  ],
 ]);
 const sha = /^[a-f0-9]{40}$/;
 

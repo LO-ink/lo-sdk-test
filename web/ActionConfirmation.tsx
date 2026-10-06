@@ -1,3 +1,4 @@
+import { Button } from "@lo-ink/ui";
 import { useEffect, useRef } from "react";
 
 export function ActionConfirmation({
@@ -27,10 +28,10 @@ export function ActionConfirmation({
       <h2 id="action-confirmation-title">{title}</h2>
       <p>{detail}</p>
       <div className="actions">
-        <button className="secondary" onClick={onCancel} autoFocus>
+        <Button variant="secondary" onClick={onCancel} autoFocus>
           Отмена
-        </button>
-        <button onClick={onConfirm}>Продолжить</button>
+        </Button>
+        <Button onClick={onConfirm}>Продолжить</Button>
       </div>
     </dialog>
   );

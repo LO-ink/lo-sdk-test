@@ -19,6 +19,12 @@ test("reported SDK versions and integrity match the public registry lock and ins
     build.packages.map((entry) => entry.name).sort(),
     declared.sort(),
   );
+  assert.deepEqual(
+    build.repositories.map((repo) => repo.name).sort(),
+    [...new Set(build.packages.map((entry) => entry.repository))].sort(),
+  );
+  for (const repo of build.repositories)
+    assert.equal(repo.url, `https://github.com/LO-ink/${repo.name}`);
   for (const entry of build.packages) {
     assert.match(entry.sourceCommit, /^[a-f0-9]{40}$/, entry.name);
     assert.ok(
