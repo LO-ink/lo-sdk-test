@@ -8,7 +8,6 @@ const rootPackagePaths = [
   "tsconfig.json",
   "README.md",
   "LICENSE",
-  "CHANGELOG.md",
 ];
 const packageSources = new Map([
   ["@lo-ink/miniapp-sdk", ["lo-miniapp-sdk", rootPackagePaths]],
