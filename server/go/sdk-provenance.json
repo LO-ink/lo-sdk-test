@@ -1,0 +1,12 @@
+{
+  "module": "github.com/LO-ink/lo-miniapp-sdk/go",
+  "sourceCommit": "25d51f20a408801d7c35ed6c12007bfe402e83e4",
+  "files": {
+    "LICENSE": "20d77d145e2e6b7b321d85e162cea9ca155be253ee4543cbcf65fe6d02f82cdf",
+    "README.md": "bfe07d2eb41165bc76cbf8efa6aa0143ae7c8f59cbdf8383d1ed570af7614cea",
+    "go.mod": "e5db62ba25444fd9f2be553cc006284db0336ef7247f10aa12240b1edcc6632d",
+    "initdata/initdata.go": "f0a1c60e07195c3efffe7f4102c2065daa8356b7f8d1ef17965370aa48b6aa3b",
+    "initdata/initdata_test.go": "5dee5b8cdb38f7398adb168f3d905100a0867ca9d6df12cbf6aa8472666ccc07",
+    "initdata/testdata/initdata.json": "efaf3f9b229f7394f73735a0d16904985d73329a097f133d07658c5443cf9219"
+  }
+}
