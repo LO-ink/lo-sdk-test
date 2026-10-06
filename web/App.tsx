@@ -9,6 +9,7 @@ import {
 import { createAdapter } from "@lo-ink/adapter-lo";
 import { cases, events, operationNames } from "./cases.ts";
 import { applyPalette } from "./theme.ts";
+import { UiPage } from "./UiPage.tsx";
 import { RunPage } from "./RunPage.tsx";
 import {
   bounded,
@@ -717,7 +718,16 @@ export function App() {
         snapshot?.colorScheme ??
         (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
       document.documentElement.dataset.loTheme = scheme;
-      applyPalette(document.documentElement, "lo", scheme);
+      const colors = snapshot?.theme;
+      const hostColor = (value: string | undefined) =>
+        value && /^#[a-f0-9]{6}$/i.test(value) ? value : undefined;
+      applyPalette(document.documentElement, "lo", scheme, {
+        bg_color: hostColor(colors?.background),
+        secondary_bg_color: hostColor(colors?.secondaryBackground),
+        text_color: hostColor(colors?.text),
+        button_color: hostColor(colors?.action),
+        button_text_color: hostColor(colors?.actionText),
+      });
       document.documentElement.style.setProperty(
         "--muted",
         scheme === "dark" ? "#a4adbd" : "#5f6878",
@@ -726,15 +736,6 @@ export function App() {
         "--hairline",
         scheme === "dark" ? "#33405c" : "#e5eaf2",
       );
-      const colors = snapshot?.theme;
-      for (const [key, value] of [
-        ["--page", colors?.background],
-        ["--surface", colors?.secondaryBackground],
-        ["--ink", colors?.text],
-        ["--accent", colors?.action],
-      ] as const)
-        if (value && /^#[a-f0-9]{6}$/i.test(value))
-          document.documentElement.style.setProperty(key, value);
       // Theme events remain observable during colour tests; only our automatic
       // writeback must stop, otherwise it would overwrite the bridge under test.
       if (testingAppearance.current) return;
@@ -1085,8 +1086,9 @@ export function App() {
           {client ? "LO подключён" : "Откройте в LO для живых проверок"}
         </span>
       </header>
-      <nav aria-label="Разделы">
+      <nav className="sdk-sections" aria-label="Разделы">
         <Button
+          variant="quiet"
           className={tab === "Все проверки" ? "active" : ""}
           aria-current={tab === "Все проверки" ? "page" : undefined}
           onClick={() => setTab("Все проверки")}
@@ -1094,15 +1096,27 @@ export function App() {
           Проверка
         </Button>
         <Button
+          variant="quiet"
           disabled={runningAll}
-          className={tab !== "Все проверки" ? "active" : ""}
-          aria-current={tab !== "Все проверки" ? "page" : undefined}
+          className={tab !== "Все проверки" && tab !== "UI" ? "active" : ""}
+          aria-current={
+            tab !== "Все проверки" && tab !== "UI" ? "page" : undefined
+          }
           onClick={() => setTab("Приложение LO")}
         >
           Вручную
         </Button>
+        <Button
+          variant="quiet"
+          disabled={runningAll}
+          className={tab === "UI" ? "active" : ""}
+          aria-current={tab === "UI" ? "page" : undefined}
+          onClick={() => setTab("UI")}
+        >
+          UI
+        </Button>
       </nav>
-      {tab !== "Все проверки" && (
+      {tab !== "Все проверки" && tab !== "UI" && (
         <div
           className="manual-section"
           role="group"
@@ -1111,7 +1125,7 @@ export function App() {
           {["Приложение LO", "Бот", "Данные запуска", "Журнал"].map((name) => (
             <Button
               key={name}
-              className={tab === name ? "active" : ""}
+              variant={tab === name ? "primary" : "secondary"}
               aria-pressed={tab === name}
               onClick={() => setTab(name)}
             >
@@ -1126,6 +1140,7 @@ export function App() {
         </p>
       )}
       <main>
+        {tab === "UI" && <UiPage />}
         {tab === "Все проверки" && (
           <RunPage
             report={automatedRun}

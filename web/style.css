@@ -6,7 +6,14 @@
   --lo-color-text-secondary: var(--muted);
   --lo-color-border: var(--hairline);
   --lo-color-accent: var(--accent);
-  --lo-color-accent-hover: color-mix(in srgb, var(--accent) 88%, var(--ink));
+  --lo-color-accent-fill: var(--accent-fill, #5060e8);
+  --lo-color-accent-text: var(--accent-text, #3f50d4);
+  --lo-color-control-border: var(--control-border, #818895);
+  --lo-color-accent-hover: color-mix(
+    in srgb,
+    var(--lo-color-accent-fill) 88%,
+    #000
+  );
   --lo-color-accent-contrast: var(--accent-ink);
   --lo-color-accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface));
   --lo-color-danger: var(--error);
@@ -15,7 +22,7 @@
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   font-synthesis: none;
-  --page: #f9fcff;
+  --page: #f7fbff;
   --surface: #fff;
   --ink: #121624;
   --muted: #5f6878;
@@ -51,8 +58,7 @@ html {
     max(var(--lo-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 24px
   );
 }
-.lo-ui-button,
-input,
+input:not(.lo-ui-field__input, .lo-ui-checkbox, .lo-ui-switch),
 textarea,
 select {
   font: inherit;
@@ -107,22 +113,22 @@ p {
   max-width: 170px;
   text-align: right;
 }
-nav {
+.sdk-sections {
   display: flex;
   border-bottom: 1px solid var(--hairline);
   gap: 6px;
   margin-bottom: 20px;
   overflow-x: auto;
 }
-nav .lo-ui-button {
+.sdk-sections .lo-ui-button {
   background: transparent;
   color: var(--muted);
   border-radius: 0;
   border-bottom: 2px solid transparent;
   padding: 14px 18px;
 }
-nav .lo-ui-button.active {
-  color: var(--accent);
+.sdk-sections .lo-ui-button.active {
+  color: var(--lo-color-accent-text);
   border-bottom-color: var(--accent);
 }
 .section-heading {
@@ -362,10 +368,10 @@ footer {
   h1 {
     font-size: 20px;
   }
-  nav {
+  .sdk-sections {
     gap: 0;
   }
-  nav .lo-ui-button {
+  .sdk-sections .lo-ui-button {
     flex: 1;
     padding: 12px 9px;
     font-size: 14px;
@@ -572,7 +578,7 @@ progress::-moz-progress-bar {
   background: color-mix(in srgb, var(--accent) 4%, var(--surface));
 }
 @media (max-width: 560px) {
-  nav .lo-ui-button {
+  .sdk-sections .lo-ui-button {
     font-size: 13px;
   }
   .run-outcome {
@@ -637,19 +643,8 @@ progress::-moz-progress-bar {
   margin-bottom: 20px;
 }
 .manual-section .lo-ui-button {
-  background: var(--surface);
-  color: var(--ink);
-  border: 1px solid var(--hairline);
-  border-radius: 8px;
   padding: 10px 12px;
-  font-size: 14px;
-  min-height: 44px;
   min-width: 0;
-}
-.manual-section .lo-ui-button.active {
-  background: var(--accent);
-  color: white;
-  border-color: var(--accent);
 }
 select:focus-visible,
 summary:focus-visible {
@@ -891,4 +886,43 @@ html.observe-lo-background .run-feed-panel {
 
 .sdk-comparison {
   text-align: center;
+}
+
+.sdk-sections .lo-ui-button {
+  flex: 1;
+  padding-inline: 8px;
+}
+.sdk-sections .lo-ui-button:focus-visible {
+  outline-offset: -3px;
+}
+.sdk-sections .lo-ui-button:active {
+  transform: none;
+}
+.ui-catalog {
+  padding: 16px;
+  background: var(--lo-color-canvas);
+  color: var(--lo-color-text);
+  border-radius: var(--lo-radius-lg);
+}
+.ui-demo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px 24px;
+  margin-top: 32px;
+}
+.ui-demo {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ui-layout-sample {
+  padding: 8px 12px;
+  background: var(--lo-color-accent-soft);
+  border-radius: var(--lo-radius-sm);
+}
+@media (max-width: 760px) {
+  .ui-demo-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

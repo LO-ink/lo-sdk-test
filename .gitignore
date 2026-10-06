@@ -23,3 +23,6 @@ coverage/
 coverage-go.out
 
 coverage-go.txt
+
+playwright-report/
+test-results/

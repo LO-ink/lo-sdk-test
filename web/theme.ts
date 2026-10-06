@@ -11,24 +11,24 @@ export type ThemeParams = Record<string, string | undefined>;
 
 const lo = {
   light: {
-    page: "#F9FCFF",
+    page: "#F7FBFF",
     surface: "#FFFFFF",
     ink: "#121624",
     muted: "#90959E",
     accent: "#5969FC",
-    accentInk: "#FAFAF9",
-    error: "#EA5455",
+    accentInk: "#FFFFFF",
+    error: "#B42332",
     success: "#257B52",
     bar: "#FFFFFF",
   },
   dark: {
-    page: "#161D31",
-    surface: "#21283E",
-    ink: "#D0D2D6",
+    page: "#0B0E17",
+    surface: "#111522",
+    ink: "#F7FBFF",
     muted: "#90959E",
     accent: "#5969FC",
-    accentInk: "#FAFAF9",
-    error: "#EA5455",
+    accentInk: "#FFFFFF",
+    error: "#FF8C96",
     success: "#6BC799",
     bar: "#121624",
   },
@@ -59,14 +59,27 @@ export function palette(
     provider === "lo"
       ? hex(params.secondary_bg_color)
       : (hex(params.section_bg_color) ?? hex(params.bg_color));
+  const action =
+    hex(params.button_color) ?? hex(params.link_color) ?? base.accent;
+  const actionText = hex(params.button_text_color) ?? base.accentInk;
+  const nativeWhiteLabel =
+    action.toUpperCase() === "#5969FC" &&
+    ["#FFFFFF", "#F7FBFF", "#FFF"].includes(actionText.toUpperCase());
   return {
     "--page": page ?? base.page,
     "--surface": surface ?? base.surface,
     "--ink": hex(params.text_color) ?? base.ink,
     "--muted": hex(params.hint_color) ?? base.muted,
-    "--accent":
-      hex(params.button_color) ?? hex(params.link_color) ?? base.accent,
-    "--accent-ink": hex(params.button_text_color) ?? base.accentInk,
+    "--accent": action,
+    "--accent-ink": actionText,
+    "--accent-fill": nativeWhiteLabel ? "#5060E8" : action,
+    "--accent-text":
+      action.toUpperCase() === "#5969FC"
+        ? scheme === "dark"
+          ? "#91A2FF"
+          : "#3F50D4"
+        : (hex(params.link_color) ?? action),
+    "--control-border": scheme === "dark" ? "#697486" : "#818895",
     "--error": hex(params.destructive_text_color) ?? base.error,
     "--success": base.success,
     "--bar": hex(params.bottom_bar_bg_color) ?? base.bar,

@@ -423,3 +423,47 @@ test("successful inverse cleanup retires scanner and fullscreen intents without 
     assert.equal(suite.cleanup.skip?.()?.state, "skipped");
   }
 });
+
+test("the reviewed UI-only upgrade preserves a 0.4.22 run but rejects execution or provenance changes", () => {
+  const oldPackages = sdkBuild.packages.map((entry) => ({
+    ...entry,
+    version: ["@lo-ink/ui", "@lo-ink/design-tokens"].includes(entry.name)
+      ? "0.1.1"
+      : entry.version,
+  }));
+  const upgradedPackages = oldPackages.map((entry) => ({
+    ...entry,
+    version: ["@lo-ink/ui", "@lo-ink/design-tokens"].includes(entry.name)
+      ? "0.2.0"
+      : entry.version,
+  }));
+  const previous = dependencyKey(oldPackages);
+  const upgraded = dependencyKey(upgradedPackages);
+  const before = report();
+  before.owner = { appId: "example-app", userId: "example-user" };
+  const store = storage();
+  saveRun(store, before, "0.4.22", previous);
+  const migrated = readRun(store, upgraded)!;
+  assert.deepEqual(migrated, before);
+  assert.equal(canResume(migrated), true);
+  assert.equal(
+    sameOwner(migrated, { appId: "example-app", userId: "another-user" }),
+    false,
+  );
+  const changedSdk = upgradedPackages.map((entry) => ({
+    ...entry,
+    version: entry.name === "@lo-ink/miniapp-sdk" ? "0.21.2" : entry.version,
+  }));
+  assert.equal(readRun(store, dependencyKey(changedSdk)), null);
+  const raw = JSON.parse(store.getItem(lastRunKey)!) as {
+    appVersion: string;
+    schema: number;
+  };
+  raw.appVersion = "0.4.20";
+  store.setItem(lastRunKey, JSON.stringify(raw));
+  assert.equal(readRun(store, upgraded), null);
+  raw.appVersion = "0.4.22";
+  raw.schema = 2;
+  store.setItem(lastRunKey, JSON.stringify(raw));
+  assert.equal(readRun(store, upgraded), null);
+});
