@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { Button, TextField } from "@lo-ink/ui";
+import { useEffect, useRef, useState } from "react";
 import type { InteractionView } from "./interaction.ts";
 export function RunInteraction({
   view,
@@ -8,7 +9,6 @@ export function RunInteraction({
   onStop: () => void;
 }) {
   const [text, setText] = useState(view.input?.value ?? "");
-  const inputId = useId();
   const inlineStart = Boolean(view.input?.preserveFocus);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
@@ -16,7 +16,7 @@ export function RunInteraction({
     heading.current?.scrollIntoView({ block: "nearest" });
   }, [view.title]);
   const startButton = view.phase === "ready" && (
-    <button
+    <Button
       className="run-start"
       onPointerDown={(event) => {
         if (view.input?.preserveFocus) event.preventDefault();
@@ -25,7 +25,7 @@ export function RunInteraction({
       disabled={Boolean(view.input && !text.trim())}
     >
       {view.actionLabel ?? "Проверить"}
-    </button>
+    </Button>
   );
   return (
     <section
@@ -42,12 +42,11 @@ export function RunInteraction({
         )}
         {view.input && (
           <div className="interaction-input">
-            <label htmlFor={inputId}>{view.input.label}</label>
             <div
               className={`interaction-input-controls${inlineStart ? " preserve-focus" : ""}${inlineStart && view.phase === "ready" ? " inline-action" : ""}`}
             >
-              <input
-                id={inputId}
+              <TextField
+                label={view.input.label}
                 value={text}
                 onChange={(event) => setText(event.target.value)}
                 placeholder={view.input.placeholder}
@@ -80,25 +79,25 @@ export function RunInteraction({
         )}
         {view.phase === "confirm" && (
           <div className="interaction-answers">
-            <button onClick={() => view.answer("yes")}>Да</button>
-            <button className="secondary" onClick={() => view.answer("no")}>
+            <Button onClick={() => view.answer("yes")}>Да</Button>
+            <Button variant="secondary" onClick={() => view.answer("no")}>
               Нет
-            </button>
+            </Button>
           </div>
         )}
         <div className="interaction-tools">
           {view.phase === "confirm" && view.action && (
-            <button
+            <Button
               onClick={() => view.repeat(text)}
               aria-label="Повторить действие"
             >
               Повторить
-            </button>
+            </Button>
           )}
           {view.phase !== "busy" && (
-            <button onClick={() => view.answer("skip")}>Пропустить</button>
+            <Button onClick={() => view.answer("skip")}>Пропустить</Button>
           )}
-          <button onClick={onStop}>Остановить</button>
+          <Button onClick={onStop}>Остановить</Button>
         </div>
       </div>
     </section>

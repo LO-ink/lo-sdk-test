@@ -1,3 +1,4 @@
+import { Button, TextField } from "@lo-ink/ui";
 import { useEffect, useRef, useState } from "react";
 import {
   bindSafeAreaCss,
@@ -665,6 +666,7 @@ export function App() {
       const scheme =
         snapshot?.colorScheme ??
         (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.loTheme = scheme;
       applyPalette(document.documentElement, "lo", scheme);
       document.documentElement.style.setProperty(
         "--muted",
@@ -1056,21 +1058,21 @@ export function App() {
         </span>
       </header>
       <nav aria-label="Разделы">
-        <button
+        <Button
           className={tab === "Все проверки" ? "active" : ""}
           aria-current={tab === "Все проверки" ? "page" : undefined}
           onClick={() => setTab("Все проверки")}
         >
           Проверка
-        </button>
-        <button
+        </Button>
+        <Button
           disabled={runningAll}
           className={tab !== "Все проверки" ? "active" : ""}
           aria-current={tab !== "Все проверки" ? "page" : undefined}
           onClick={() => setTab("Приложение LO")}
         >
           Вручную
-        </button>
+        </Button>
       </nav>
       {tab !== "Все проверки" && (
         <div
@@ -1079,14 +1081,14 @@ export function App() {
           aria-label="Ручные проверки"
         >
           {["Приложение LO", "Бот", "Данные запуска", "Журнал"].map((name) => (
-            <button
+            <Button
               key={name}
               className={tab === name ? "active" : ""}
               aria-pressed={tab === name}
               onClick={() => setTab(name)}
             >
               {name}
-            </button>
+            </Button>
           ))}
         </div>
       )}
@@ -1146,14 +1148,14 @@ export function App() {
               </dl>
               <div className="group-footer">
                 <p className="note">Сырая строка и ключи не входят в отчёт.</p>
-                <button
+                <Button
                   disabled={!client || !configuration?.appConfigured}
                   onClick={() => {
                     void authenticate();
                   }}
                 >
                   Проверить подпись
-                </button>
+                </Button>
                 {!configuration?.appConfigured && (
                   <p className="note">
                     Настройте ключ приложения на сервере, затем обновите
@@ -1170,15 +1172,15 @@ export function App() {
                   <h3>Безопасные поля экрана</h3>
                   <p className="mono">{insets}</p>
                 </div>
-                <button
-                  className="secondary"
+                <Button
+                  variant="secondary"
                   disabled={!client}
                   onClick={() =>
                     complete("snapshot", client?.adapter.snapshot())
                   }
                 >
                   Снимок
-                </button>
+                </Button>
               </div>
               {resultView("snapshot")}
               <div className="row">
@@ -1186,14 +1188,14 @@ export function App() {
                   <h3>Тестовый сигнал</h3>
                   <p>Контекст: {audioState}</p>
                 </div>
-                <button
-                  className="secondary"
+                <Button
+                  variant="secondary"
                   onClick={() => {
                     void playAudio();
                   }}
                 >
                   Проверить звук
-                </button>
+                </Button>
               </div>
             </section>
             <h2 className="standalone-heading">Результат текущего запуска</h2>
@@ -1221,24 +1223,23 @@ export function App() {
                 </p>
               </div>
             </div>
-            <label className="search">
-              <span className="visually-hidden">Найти проверку</span>
-              <input
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-                placeholder="Поиск по названию или методу"
-              />
-            </label>
+            <TextField
+              className="search"
+              label="Найти проверку"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Поиск по названию или методу"
+            />
             <div className="filters" aria-label="Категория">
               {groups.map((name) => (
-                <button
+                <Button
                   key={name}
-                  className={group === name ? "selected" : "secondary"}
+                  variant={group === name ? "primary" : "secondary"}
                   aria-pressed={group === name}
                   onClick={() => setGroup(name)}
                 >
                   {name}
-                </button>
+                </Button>
               ))}
             </div>
             <section className="group operations">
@@ -1268,8 +1269,9 @@ export function App() {
                           </p>
                         </div>
                         <div className="actions">
-                          <button
-                            className="secondary small"
+                          <Button
+                            variant="secondary"
+                            size="small"
                             aria-label={`Параметры ${definition.label}`}
                             onClick={() => {
                               setSelected(name);
@@ -1281,25 +1283,25 @@ export function App() {
                             }}
                           >
                             Параметры
-                          </button>
+                          </Button>
                           {running ? (
-                            <button
-                              className="secondary"
+                            <Button
+                              variant="secondary"
                               onClick={() =>
                                 controllers.current.get(name)?.abort()
                               }
                             >
                               Отмена
-                            </button>
+                            </Button>
                           ) : (
-                            <button
+                            <Button
                               disabled={!supported}
                               onClick={() => {
                                 void run(name);
                               }}
                             >
                               Тест
-                            </button>
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -1348,7 +1350,7 @@ export function App() {
                         : "Ещё не запрашивали"}
                   </p>
                 </div>
-                <button
+                <Button
                   disabled={
                     !authenticated ||
                     !configuration?.botConfigured ||
@@ -1359,7 +1361,7 @@ export function App() {
                   }}
                 >
                   Разрешить
-                </button>
+                </Button>
               </div>
               <div className="group-footer">
                 <p className="note">
@@ -1374,15 +1376,15 @@ export function App() {
                 </p>
                 {backendMessage && <p role="status">{backendMessage}</p>}
                 {consent !== null && (
-                  <button
-                    className="secondary"
+                  <Button
+                    variant="secondary"
                     disabled={!authenticated}
                     onClick={() => {
                       void saveConsent();
                     }}
                   >
                     Повторить отправку ответа
-                  </button>
+                  </Button>
                 )}
                 {resultView("requestWriteAccess")}
               </div>
@@ -1404,7 +1406,7 @@ export function App() {
                 <article key={operation}>
                   <div className="row">
                     <code>{operation}</code>
-                    <button
+                    <Button
                       disabled={
                         !authenticated ||
                         !configuration?.botConfigured ||
@@ -1421,7 +1423,7 @@ export function App() {
                       }}
                     >
                       Тест
-                    </button>
+                    </Button>
                   </div>
                   {resultView(`bot:${operation}`)}
                 </article>
@@ -1440,30 +1442,30 @@ export function App() {
                   className="sample-files"
                   aria-label="Готовые файлы для проверки"
                 >
-                  <button
-                    className="secondary"
+                  <Button
+                    variant="secondary"
                     onClick={() => void selectSample("photo")}
                   >
                     Тестовое фото
-                  </button>
-                  <button
-                    className="secondary"
+                  </Button>
+                  <Button
+                    variant="secondary"
                     onClick={() => void selectSample("document")}
                   >
                     Тестовый документ
-                  </button>
-                  <button
-                    className="secondary"
+                  </Button>
+                  <Button
+                    variant="secondary"
                     onClick={() => void selectSample("voice")}
                   >
                     Тестовое AAC
-                  </button>
-                  <button
-                    className="secondary"
+                  </Button>
+                  <Button
+                    variant="secondary"
                     onClick={() => void selectSample("video")}
                   >
                     Тестовое видео
-                  </button>
+                  </Button>
                 </div>
                 {file && <p className="note">Выбран: {file.name}</p>}
                 <p className="note">
@@ -1486,7 +1488,7 @@ export function App() {
                 <article key={operation}>
                   <div className="row">
                     <code>{operation}</code>
-                    <button
+                    <Button
                       disabled={
                         !authenticated ||
                         !configuration?.botConfigured ||
@@ -1498,7 +1500,7 @@ export function App() {
                       }}
                     >
                       Тест
-                    </button>
+                    </Button>
                   </div>
                   {resultView(`bot:${operation}`)}
                 </article>
@@ -1516,14 +1518,14 @@ export function App() {
                     большая подпись
                   </p>
                 </div>
-                <button
-                  className="secondary"
+                <Button
+                  variant="secondary"
                   onClick={() => {
                     void bot("conformance");
                   }}
                 >
                   Проверить
-                </button>
+                </Button>
               </div>
               {resultView("bot:conformance")}
             </section>
@@ -1539,9 +1541,13 @@ export function App() {
                   скрыты.
                 </p>
               </div>
-              <button className="secondary small" onClick={() => setLog([])}>
+              <Button
+                variant="secondary"
+                size="small"
+                onClick={() => setLog([])}
+              >
                 Очистить
-              </button>
+              </Button>
             </div>
             <section className="group">
               {log.length === 0 ? (
@@ -1589,15 +1595,15 @@ export function App() {
             value={reportText}
           />
           <div className="actions">
-            <button
-              className="secondary"
+            <Button
+              variant="secondary"
               onClick={() => {
                 reportDialog.current?.close();
                 setReportText("");
               }}
             >
               Закрыть
-            </button>
+            </Button>
           </div>
         </dialog>
       )}
@@ -1623,10 +1629,10 @@ export function App() {
             rows={8}
           />
           <div className="actions">
-            <button className="secondary" onClick={() => setSelected(null)}>
+            <Button variant="secondary" onClick={() => setSelected(null)}>
               Закрыть
-            </button>
-            <button
+            </Button>
+            <Button
               disabled={!client?.supports(cases[selected].capability)}
               onClick={() => {
                 try {
@@ -1640,7 +1646,7 @@ export function App() {
               }}
             >
               Запустить
-            </button>
+            </Button>
           </div>
         </dialog>
       )}

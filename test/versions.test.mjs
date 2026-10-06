@@ -308,3 +308,60 @@ test("public version endpoint returns checker metadata without requiring LO logi
   assert.equal(body.includes("private-"), false);
   assert.deepEqual(JSON.parse(body), metadata);
 });
+
+test("UI freshness checks its package and shared build config independently of its sibling", async () => {
+  for (const changedPath of [
+    "packages/ui",
+    "packages/design-tokens",
+    "LICENSE",
+    "package.json",
+    "package-lock.json",
+    ".github/workflows/ci.yml",
+  ]) {
+    const check = createVersionChecker({
+      loadBuild: async () => ({
+        packages: ["ui", "design-tokens"].map((name) => ({
+          name: `@lo-ink/${name}`,
+          repository: "lo-ui",
+          version: "0.1.0",
+          sourceCommit: source,
+        })),
+      }),
+      fetch: async (url) => {
+        if (url.includes("/git/trees/"))
+          return response({
+            truncated: false,
+            tree: [
+              "packages/ui",
+              "packages/design-tokens",
+              "LICENSE",
+              "package.json",
+              "package-lock.json",
+              ".github/workflows/ci.yml",
+            ].map((path) => ({
+              path,
+              type: path.startsWith("packages/") ? "tree" : "blob",
+              mode: "100644",
+              sha:
+                path === changedPath && url.includes(latest) ? latest : source,
+            })),
+          });
+        return response(
+          url.includes("/compare/") ? { status: "ahead" } : { sha: latest },
+        );
+      },
+    });
+    assert.deepEqual(
+      (await check()).packages.map((p) => p.state),
+      changedPath === "packages/ui"
+        ? ["update", "current"]
+        : changedPath === "packages/design-tokens"
+          ? ["current", "update"]
+          : ["LICENSE", "package.json", "package-lock.json"].includes(
+                changedPath,
+              )
+            ? ["update", "update"]
+            : ["current", "current"],
+    );
+  }
+});

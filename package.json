@@ -1,6 +1,6 @@
 {
   "name": "lo-sdk-test",
-  "version": "0.4.20",
+  "version": "0.4.21",
   "private": true,
   "type": "module",
   "engines": {
@@ -20,7 +20,7 @@
     "security": "npm audit --audit-level=high",
     "test:coverage": "npm run build:go && c8 node --import tsx --test test/*.test.*",
     "check": "tsc --noEmit",
-    "policy": "node scripts/check-policy.mjs",
+    "policy": "node --test scripts/check-policy.test.mjs && node scripts/check-policy.mjs",
     "secrets": "node scripts/check-secrets.mjs",
     "ci": "make ci"
   },
@@ -28,9 +28,11 @@
     "@lo-ink/adapter-lo": "0.23.3",
     "@lo-ink/adapter-lo-legacy": "0.2.0",
     "@lo-ink/adapter-webapp-compat": "0.20.0",
-    "@lo-ink/bot-http-lo": "0.5.0",
-    "@lo-ink/bot-sdk": "0.4.3",
-    "@lo-ink/miniapp-sdk": "0.21.0",
+    "@lo-ink/bot-http-lo": "0.5.1",
+    "@lo-ink/bot-sdk": "0.4.4",
+    "@lo-ink/design-tokens": "0.1.1",
+    "@lo-ink/miniapp-sdk": "0.21.1",
+    "@lo-ink/ui": "0.1.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
@@ -51,7 +53,8 @@
     "tsx": "^4.23.13",
     "typescript": "^5.9.3",
     "typescript-eslint": "8.71.1",
-    "vite": "^8.2.2"
+    "vite": "^8.2.2",
+    "yaml": "2.9.1"
   },
   "repository": {
     "type": "git",

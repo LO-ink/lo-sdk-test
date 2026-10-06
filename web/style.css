@@ -1,4 +1,17 @@
 :root {
+  --lo-color-canvas: var(--page);
+  --lo-color-surface: var(--surface);
+  --lo-color-surface-raised: var(--surface);
+  --lo-color-text: var(--ink);
+  --lo-color-text-secondary: var(--muted);
+  --lo-color-border: var(--hairline);
+  --lo-color-accent: var(--accent);
+  --lo-color-accent-hover: color-mix(in srgb, var(--accent) 88%, var(--ink));
+  --lo-color-accent-contrast: var(--accent-ink);
+  --lo-color-accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  --lo-color-danger: var(--error);
+  --lo-color-danger-soft: color-mix(in srgb, var(--error) 12%, var(--surface));
+  --lo-color-focus: var(--accent);
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
   font-synthesis: none;
@@ -38,38 +51,12 @@ html {
     max(var(--lo-safe-bottom, 0px), env(safe-area-inset-bottom, 0px)) + 24px
   );
 }
-button,
+.lo-ui-button,
 input,
 textarea,
 select {
   font: inherit;
 }
-button {
-  border: 1px solid transparent;
-  border-radius: 14px;
-  min-height: 44px;
-  padding: 10px 16px;
-  color: var(--accent-ink);
-  background: var(--accent);
-  cursor: pointer;
-  font-weight: 600;
-  white-space: nowrap;
-}
-button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-button.secondary {
-  background: transparent;
-  border-color: var(--hairline);
-  color: var(--ink);
-}
-button.small {
-  font-size: 13px;
-  padding: 8px 12px;
-}
-button:focus-visible,
-input:focus-visible,
 textarea:focus-visible,
 a:focus-visible {
   outline: 3px solid var(--accent);
@@ -127,14 +114,14 @@ nav {
   margin-bottom: 20px;
   overflow-x: auto;
 }
-nav button {
+nav .lo-ui-button {
   background: transparent;
   color: var(--muted);
   border-radius: 0;
   border-bottom: 2px solid transparent;
   padding: 14px 18px;
 }
-nav button.active {
+nav .lo-ui-button.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
 }
@@ -171,7 +158,7 @@ article + article {
   padding: 16px 20px;
   border-top: 1px solid var(--hairline);
 }
-.group-footer button {
+.group-footer .lo-ui-button {
   margin-top: 12px;
 }
 .note {
@@ -252,15 +239,6 @@ pre {
   font-size: 24px;
   line-height: 1.4;
 }
-.search input {
-  border: 1px solid var(--hairline);
-  border-radius: 14px;
-  width: 100%;
-  min-height: 48px;
-  padding: 12px 16px;
-  color: var(--ink);
-  background: var(--surface);
-}
 .filters {
   display: flex;
   gap: 8px;
@@ -268,7 +246,7 @@ pre {
   margin: 14px 0 20px;
   padding-bottom: 4px;
 }
-.filters button {
+.filters .lo-ui-button {
   font-size: 13px;
 }
 .actions {
@@ -324,7 +302,7 @@ pre {
   gap: 8px;
   margin-top: 12px;
 }
-.sample-files button {
+.sample-files .lo-ui-button {
   margin-top: 0;
 }
 .modal::backdrop {
@@ -366,7 +344,8 @@ footer {
   line-height: 1.5;
   padding-top: 8px;
 }
-.visually-hidden {
+.visually-hidden,
+.search .lo-ui-field__label {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -386,7 +365,7 @@ footer {
   nav {
     gap: 0;
   }
-  nav button {
+  nav .lo-ui-button {
     flex: 1;
     padding: 12px 9px;
     font-size: 14px;
@@ -539,7 +518,7 @@ progress::-moz-progress-bar {
   color: var(--ink);
   font-size: 24px;
 }
-.run-outcome > button {
+.run-outcome > .lo-ui-button {
   margin-top: 16px;
   white-space: normal;
 }
@@ -593,7 +572,7 @@ progress::-moz-progress-bar {
   background: color-mix(in srgb, var(--accent) 4%, var(--surface));
 }
 @media (max-width: 560px) {
-  nav button {
+  nav .lo-ui-button {
     font-size: 13px;
   }
   .run-outcome {
@@ -657,7 +636,7 @@ progress::-moz-progress-bar {
   gap: 8px;
   margin-bottom: 20px;
 }
-.manual-section button {
+.manual-section .lo-ui-button {
   background: var(--surface);
   color: var(--ink);
   border: 1px solid var(--hairline);
@@ -667,7 +646,7 @@ progress::-moz-progress-bar {
   min-height: 44px;
   min-width: 0;
 }
-.manual-section button.active {
+.manual-section .lo-ui-button.active {
   background: var(--accent);
   color: white;
   border-color: var(--accent);
@@ -692,7 +671,7 @@ summary:focus-visible {
   flex-wrap: wrap;
   overflow: visible;
 }
-.report-filters button {
+.report-filters .lo-ui-button {
   flex: 1;
   padding-inline: 12px;
 }
@@ -795,7 +774,7 @@ summary:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
-.interaction-answers > button {
+.interaction-answers > .lo-ui-button {
   min-height: 48px;
 }
 .interaction-tools {
@@ -803,7 +782,7 @@ summary:focus-visible {
   gap: 8px;
   margin-top: 8px;
 }
-.interaction-tools button {
+.interaction-tools .lo-ui-button {
   flex: 1;
   min-width: 0;
   padding: 8px 0;
@@ -833,7 +812,7 @@ summary:focus-visible {
   padding: 16px 20px;
   margin-bottom: 20px;
 }
-.deferred-checks > button {
+.deferred-checks > .lo-ui-button {
   display: block;
   width: 100%;
   margin-top: 12px;
