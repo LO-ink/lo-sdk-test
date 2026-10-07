@@ -57,10 +57,10 @@
     },
     {
       "name": "@lo-ink/ui",
-      "version": "0.4.1",
+      "version": "0.4.2",
       "repository": "lo-ui",
-      "sourceCommit": "66b2cd497f5355336e2683c906547e69efe718d6",
-      "integrity": "sha512-RODRz5+9sLoeOq/yz5izC1cC2vho0dguTgRKzu++xlGQk7SLBCnB/3sIwChorf9hwLlyM1bNS4Gf4VH+e1GCyg=="
+      "sourceCommit": "c38609bc49d3ef238027f908568f08c4253719cf",
+      "integrity": "sha512-AH30HOuFGVzfPeVKZEDgMooPPrkagaxZ3n35wrJzpHUoOeW4lvL1omrZPsK1tNAQGPSsna40eMvCBngLTwIIDg=="
     }
   ],
   "goVerifier": {
