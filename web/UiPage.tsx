@@ -57,7 +57,7 @@ export function UiPage({
       <Stack gap={4}>
         <Heading level={2}>UI компоненты</Heading>
         <Text tone="secondary">
-          Компоненты LO. Действия работают только на этой странице.
+          Выбранная тема применяется ко всему приложению.
         </Text>
         <Inline gap={2} role="group" aria-label="Тема приложения">
           {(["host", "light", "dark"] as const).map((value) => (
