@@ -17,6 +17,7 @@ import {
   type MiniAppOperation,
 } from "@lo-ink/miniapp-sdk";
 import { cases, events, operationNames } from "./cases.ts";
+import { api, uploadFile } from "./api.ts";
 import { applyPalette } from "./theme.ts";
 import { SecretaryPage } from "./SecretaryPage.tsx";
 import { UiPage } from "./UiPage.tsx";
@@ -46,6 +47,7 @@ import { systemThemeChecks } from "./system-theme.ts";
 import { ActionConfirmation } from "./ActionConfirmation.tsx";
 import {
   applyDeferredResult,
+  canRunDeferred,
   createDeferredTicket,
   createDeliveryCheck,
   deferredIdentity,
@@ -88,36 +90,6 @@ function display(value: unknown, operation = ""): string {
     ) ?? ""
   );
 }
-async function api<T>(
-  path: string,
-  body?: unknown,
-  signal?: AbortSignal,
-): Promise<T> {
-  const response = await fetch(`/api/${path}`, {
-    credentials: "same-origin",
-    signal,
-    ...(body === undefined
-      ? {}
-      : {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-sdk-test": "1" },
-          body: JSON.stringify(body),
-        }),
-  });
-  const result = await response.json();
-  if (!response.ok) {
-    const pause = Number.isFinite(result.retryAfterSec)
-      ? `; пауза ${result.retryAfterSec} с`
-      : "";
-    throw Object.assign(
-      new Error(
-        `${result.message ?? `Ошибка ${response.status}`}${result.code ? ` (${result.code}${pause})` : ""}`,
-      ),
-      { code: result.code, reason: result.reason, status: response.status },
-    );
-  }
-  return result as T;
-}
 export function App() {
   const [client, setClient] = useState<MiniAppClient | null>(null);
   const clientRef = useRef(client);
@@ -142,6 +114,7 @@ export function App() {
     caution: string;
   } | null>(null);
   const [input, setInput] = useState("");
+  const [inputError, setInputError] = useState("");
   const [eventValues, setEventValues] = useState<Record<string, string>>({});
   const [insets, setInsets] = useState("Нет данных LO");
   const [exporting, setExporting] = useState(false);
@@ -151,6 +124,7 @@ export function App() {
   const mounted = useRef(true);
   const audio = useRef<AudioContext | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  const parameterInput = useRef<HTMLTextAreaElement>(null);
   const reportDialog = useRef<HTMLDialogElement>(null);
   const [automatedRun, setAutomatedRun] = useState<RunReport | null>(() =>
     readRun(localStorage, dependencies),
@@ -293,6 +267,13 @@ export function App() {
       dispose();
       setExportMessage(
         "Откройте тест из LO заново: для этой проверки нужны данные запуска приложения и пользователя.",
+      );
+      return;
+    }
+    if (!canRunDeferred(automatedRun, id, identity)) {
+      dispose();
+      setExportMessage(
+        "Нужен завершённый прогон текущего пользователя с успешным восстановлением состояния.",
       );
       return;
     }
@@ -480,6 +461,7 @@ export function App() {
       }
     const common = {
       api,
+      upload: uploadFile,
       consent: null,
       includeBot,
       interact,
@@ -973,25 +955,13 @@ export function App() {
       },
     }));
     try {
-      // File bytes are encoded in bounded chunks to avoid call-stack overflow.
-      let data: string | undefined;
-      if (
+      const result =
         file &&
         ["sendPhoto", "sendDocument", "sendVoice", "sendVideo"].includes(
           operation,
         )
-      ) {
-        if (file.size > 50 << 20) throw new Error("Файл превышает 50 МиБ");
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        let binary = "";
-        for (let i = 0; i < bytes.length; i += 8192)
-          binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-        data = btoa(binary);
-      }
-      const result = await api("bot", {
-        operation,
-        ...(data ? { file: { data, name: file!.name, mime: file!.type } } : {}),
-      });
+          ? await uploadFile(operation, file)
+          : await api("bot", { operation });
       complete(`bot:${operation}`, result);
     } catch (error) {
       complete(
@@ -1203,6 +1173,7 @@ export function App() {
             }}
             onExport={() => void exportReport()}
             onDeferred={runDeferred}
+            identity={client ? deferredIdentity(client) : null}
           />
         )}
         {tab === "Данные запуска" && (
@@ -1365,6 +1336,7 @@ export function App() {
                             aria-label={`Параметры ${definition.label}`}
                             onClick={() => {
                               setSelected(name);
+                              setInputError("");
                               setInput(
                                 definition.input === undefined
                                   ? ""
@@ -1746,8 +1718,13 @@ export function App() {
             <TextArea
               label="Параметры JSON; пусто для вызова без параметров"
               id="params"
+              ref={parameterInput}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              error={inputError || undefined}
+              onChange={(event) => {
+                setInput(event.target.value);
+                setInputError("");
+              }}
               autoFocus
               rows={8}
             />
@@ -1764,7 +1741,10 @@ export function App() {
                     setSelected(null);
                     void run(name, parsed);
                   } catch {
-                    complete(selected, "Некорректный JSON", "failed");
+                    setInputError(
+                      "Некорректный JSON. Исправьте параметры и повторите запуск.",
+                    );
+                    parameterInput.current?.focus();
                   }
                 }}
               >

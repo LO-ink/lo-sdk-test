@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   applyDeferredResult,
+  canRunDeferred,
+  persistDeferredResult,
   clearDeferredTicket,
   createDeferredTicket,
   deferredKey,
@@ -15,14 +17,17 @@ const report = (): RunReport => ({
   id: crypto.randomUUID(),
   startedAt: new Date().toISOString(),
   state: "finished",
-  checks: ["native:sendData", "compat:sendData", "native:close"].map((id) => ({
-    id,
-    label: id,
-    group: "test",
-    state: "manual",
-    detail: "pending",
-    durationMs: 0,
-  })),
+  owner: { ...identity },
+  checks: ["native:sendData", "compat:sendData", "native:close", "cleanup"].map(
+    (id) => ({
+      id,
+      label: id,
+      group: "test",
+      state: id === "cleanup" ? "passed" : "manual",
+      detail: "pending",
+      durationMs: 0,
+    }),
+  ),
 });
 const storage = () => {
   const values = new Map<string, string>();
@@ -227,4 +232,80 @@ test("late positive correlation after cancellation cannot confirm a deferred act
     ),
     /stopped/,
   );
+});
+
+test("every deferred action rejects foreign owners and unrestored reports at creation, reload and commit", () => {
+  for (const id of ["native:sendData", "compat:sendData", "native:close"]) {
+    const good = report();
+    const ticket = createDeferredTicket(good, id, "build", identity);
+    const store = storage();
+    store.setItem(deferredKey, JSON.stringify(ticket));
+    const invalid: RunReport[] = [
+      { ...good, owner: undefined },
+      { ...good, owner: { ...identity, userId: "other-user" } },
+      { ...good, owner: { ...identity, appId: "other-app" } },
+      { ...good, state: "running" },
+      { ...good, state: "cancelled" },
+      { ...good, resumeBlocked: true },
+      { ...good, checks: good.checks.filter((c) => c.id !== "cleanup") },
+      {
+        ...good,
+        checks: good.checks.map((c) =>
+          c.id === "cleanup" ? { ...c, state: "failed" } : c,
+        ),
+      },
+      {
+        ...good,
+        recovery: {
+          native: {
+            key: "owned",
+            written: [],
+            mutations: ["exitFullscreen"],
+            original: { isFullscreen: true },
+          },
+        },
+      },
+    ];
+    const passed = {
+      state: "passed" as const,
+      detail: "confirmed",
+      evidence: "device" as const,
+    };
+    for (const changed of invalid) {
+      assert.equal(canRunDeferred(changed, id, identity), false);
+      assert.throws(() => createDeferredTicket(changed, id, "build", identity));
+      assert.equal(readDeferredTicket(store, changed, "build", identity), null);
+      assert.equal(applyDeferredResult(changed, ticket, passed), changed);
+      assert.equal(
+        persistDeferredResult(
+          store,
+          changed,
+          ticket,
+          passed,
+          "build",
+          "deps",
+          identity,
+        ),
+        changed,
+      );
+      assert.equal(store.getItem("sdk-test.last-run"), null);
+      assert.notEqual(store.getItem(deferredKey), null);
+    }
+    const foreign = { ...identity, userId: "new-account" };
+    assert.throws(() => createDeferredTicket(good, id, "build", foreign));
+    assert.equal(canRunDeferred(good, id, null), false);
+    assert.equal(canRunDeferred(good, id, identity), true);
+    assert.equal(
+      persistDeferredResult(
+        store,
+        good,
+        ticket,
+        passed,
+        "build",
+        "deps",
+        identity,
+      )!.checks.find((c) => c.id === id)!.state,
+      "passed",
+    );
+  }
 });

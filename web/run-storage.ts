@@ -1,5 +1,6 @@
 import {
   recoveryOperations,
+  recoveryButtons,
   type CheckResult,
   type RunReport,
 } from "./runner.ts";
@@ -67,6 +68,18 @@ function validRecovery(value: unknown, runId: string): boolean {
         (recoveryOperations as readonly unknown[]).includes(item),
       ) ||
       !object(entry.original)
+    )
+      return false;
+    if (
+      entry.buttons !== undefined &&
+      (!Array.isArray(entry.buttons) ||
+        !entry.buttons.length ||
+        entry.buttons.length > 4 ||
+        new Set(entry.buttons).size !== entry.buttons.length ||
+        !entry.buttons.every((button) =>
+          (recoveryButtons as readonly unknown[]).includes(button),
+        ) ||
+        !entry.mutations.includes("setButton"))
     )
       return false;
     const original = entry.original;

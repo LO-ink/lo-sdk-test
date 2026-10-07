@@ -51,7 +51,25 @@ verify_public() {
   public_revision=$(curl --fail --silent --show-error --max-time 30 "$PUBLIC_URL/release.json?revision=$revision" | python3 -c 'import json,sys; print(json.load(sys.stdin)["revision"])') || return 1
   [[ "$public_revision" == "$revision" ]]
 }
+record_release() {
+printf 'SDK_TEST_IMAGE=%s\n' "$image" > deployment.env.next
+mv deployment.env.next deployment.env
+python3 - "$image" "$revision" <<'PY'
+import sys,json,datetime,os
+deployed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+try:
+ with open('current-release.json') as f: previous = json.load(f)
+ if previous.get('image') == sys.argv[1] and previous.get('revision') == sys.argv[2] and isinstance(previous.get('deployedAt'), str):
+  deployed_at = previous['deployedAt']
+except (OSError, ValueError, AttributeError):
+ pass
+with open('current-release.json.next','w') as f:
+ json.dump({'image':sys.argv[1],'revision':sys.argv[2],'deployedAt':deployed_at},f)
+os.replace('current-release.json.next','current-release.json')
+PY
+}
 if [[ "$previous_image" == "$image" && $(docker inspect --format '{{.State.Health.Status}}' "$current") == healthy ]] && verify_public; then
+  record_release
   echo "Already deployed $revision"
   exit 0
 fi
@@ -72,12 +90,5 @@ for attempt in {1..6}; do
   sleep 3
 done
 [[ "$verified" == true ]] || rollback
-printf 'SDK_TEST_IMAGE=%s\n' "$image" > deployment.env.next
-mv deployment.env.next deployment.env
-python3 - "$image" "$revision" <<'PY'
-import sys,json,datetime,os
-with open('current-release.json.next','w') as f:
- json.dump({'image':sys.argv[1],'revision':sys.argv[2],'deployedAt':datetime.datetime.now(datetime.timezone.utc).isoformat()},f)
-os.replace('current-release.json.next','current-release.json')
-PY
+record_release
 echo "Deployed $revision"

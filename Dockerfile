@@ -14,7 +14,7 @@ ARG BUILD_REVISION=local
 LABEL org.opencontainers.image.source="https://github.com/LO-ink/lo-sdk-test" \
       org.opencontainers.image.revision="$BUILD_REVISION"
 WORKDIR /app
-ENV PORT=5407 BIND_ADDRESS=0.0.0.0
+ENV PORT=5407 BIND_ADDRESS=0.0.0.0 LO_UPLOAD_DIR=/var/lib/lo-sdk-test/uploads
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/server ./server
 COPY --from=build --chown=node:node /app/node_modules ./node_modules

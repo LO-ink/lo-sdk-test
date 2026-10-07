@@ -40,7 +40,11 @@ docker build --platform linux/amd64 -t lo-sdk-test:local .
 make container IMAGE=lo-sdk-test:local
 ```
 
-The container runs as node with a read-only filesystem. Its smoke test verifies server startup, the Go verifier and the build identity.
+The container runs as node with a read-only filesystem and a private disk-backed
+upload directory. Its smoke test checks startup, the Go verifier, build identity
+and the 256 MiB memory limit. Bot controls use small JSON bodies; media is uploaded
+as binary data, one file at a time, up to 50 MiB. Temporary files are removed after
+sending or cancellation. Reports have bounded depth, size and total retention.
 
 ## Deployment
 

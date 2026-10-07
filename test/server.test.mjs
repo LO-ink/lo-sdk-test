@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createHmac } from "node:crypto";
 import { createHandler } from "../server/app.mjs";
 import { conformance } from "../server/conformance.mjs";
@@ -28,17 +31,25 @@ async function fixture(
   config = {},
   botFetch = () => assert.fail("No network expected"),
   clock = () => now,
+  dependencies = {},
 ) {
+  const uploadDirectory = await mkdtemp(join(tmpdir(), "lo-sdk-test-media-"));
+  t.after(() => rm(uploadDirectory, { recursive: true, force: true }));
   const server = createServer(
     createHandler(
-      { LO_APP_ID: "test-app", LO_APP_KEY: appKey, ...config },
-      { now: clock, fetch: botFetch },
+      {
+        LO_APP_ID: "test-app",
+        LO_APP_KEY: appKey,
+        LO_UPLOAD_DIR: uploadDirectory,
+        ...config,
+      },
+      { now: clock, fetch: botFetch, ...dependencies },
     ),
   );
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => new Promise((resolve) => server.close(resolve)));
   const url = `http://127.0.0.1:${server.address().port}`;
-  return (path, body, cookie = "", extra = {}) =>
+  const request = (path, body, cookie = "", extra = {}) =>
     fetch(url + path, {
       method: body === undefined ? "GET" : "POST",
       headers: {
@@ -47,8 +58,20 @@ async function fixture(
         ...(cookie ? { cookie } : {}),
         ...extra,
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined
+        ? {}
+        : { body: body instanceof Uint8Array ? body : JSON.stringify(body) }),
     });
+  request.upload = (operation, data, cookie, metadata = {}) =>
+    request(
+      `/api/bot/upload?${new URLSearchParams({ operation, name: "fixture.bin", ...metadata })}`,
+      data,
+      cookie,
+      { "content-type": "application/octet-stream" },
+    );
+  request.origin = url;
+  request.uploadDirectory = uploadDirectory;
+  return request;
 }
 test("bad signature, wrong app, expired launch and foreign origins fail closed", async (t) => {
   const request = await fixture(t);
@@ -396,9 +419,9 @@ test("media/file checks use session-owned IDs and metadata; download reports byt
   const login2 = await request("/api/session", { raw: signed() });
   const isolatedCookie = login2.headers.get("set-cookie").split(";")[0];
   await request("/api/consent", { allowed: true }, cookie);
-  let response = await request(
-    "/api/bot",
-    { operation: "sendDocument", file: { data: "AQID", name: "fixture.bin" } },
+  let response = await request.upload(
+    "sendDocument",
+    new Uint8Array([1, 2, 3]),
     cookie,
   );
   assert.equal(response.status, 200);
@@ -478,16 +501,8 @@ test("document album uses an owned reference and a distinct uploaded document", 
   const cookie = login.headers.get("set-cookie").split(";")[0];
   await request("/api/consent", { allowed: true }, cookie);
   assert.equal(
-    (
-      await request(
-        "/api/bot",
-        {
-          operation: "sendDocument",
-          file: { data: "AQID", name: "fixture.bin" },
-        },
-        cookie,
-      )
-    ).status,
+    (await request.upload("sendDocument", new Uint8Array([1, 2, 3]), cookie))
+      .status,
     200,
   );
   clock += 3;
@@ -818,4 +833,276 @@ test("secretary route requires signed owner and rejects foreign origins before a
     ).status,
     403,
   );
+});
+
+test("bot control bodies stay small for authenticated users and never accept base64 uploads", async (t) => {
+  let calls = 0;
+  const request = await fixture(
+    t,
+    {
+      LO_BOT_TOKEN: "42:synthetic-test-token",
+      LO_APP_URL: "https://app.example.test/",
+    },
+    () => {
+      calls++;
+      assert.fail("No upstream call expected");
+    },
+  );
+  const login = await request("/api/session", { raw: signed() });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  const rejected = await request(
+    "/api/bot",
+    { operation: "conformance", unused: "x".repeat(4096) },
+    cookie,
+  );
+  assert.equal(rejected.status, 413);
+  assert.equal(
+    (await request("/api/bot", { operation: "conformance" }, cookie)).status,
+    200,
+  );
+  await request("/api/consent", { allowed: true }, cookie);
+  assert.equal(
+    (
+      await request(
+        "/api/bot",
+        {
+          operation: "sendDocument",
+          file: { data: "AQID", name: "fixture.bin" },
+        },
+        cookie,
+      )
+    ).status,
+    400,
+  );
+  assert.equal(calls, 0);
+});
+
+test("binary uploads require a signed owner, consent and valid metadata before reading media", async (t) => {
+  const request = await fixture(t, {
+    LO_BOT_TOKEN: "42:synthetic-test-token",
+    LO_APP_URL: "https://app.example.test/",
+  });
+  const bytes = new Uint8Array([1, 2, 3]);
+  assert.equal((await request.upload("sendDocument", bytes, "")).status, 401);
+  const login = await request("/api/session", { raw: signed() });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  assert.equal(
+    (await request.upload("sendDocument", bytes, cookie)).status,
+    403,
+  );
+  await request("/api/consent", { allowed: true }, cookie);
+  for (const metadata of [
+    { name: "../secret" },
+    { name: "x".repeat(256) },
+    { mime: "text/plain\r\nInjected" },
+  ])
+    assert.equal(
+      (await request.upload("sendDocument", bytes, cookie, metadata)).status,
+      400,
+    );
+  assert.equal(
+    (await request.upload("conformance", bytes, cookie)).status,
+    400,
+  );
+  assert.equal(
+    (
+      await request(
+        "/api/bot/upload?operation=sendDocument&name=a.bin",
+        { ignored: true },
+        cookie,
+      )
+    ).status,
+    415,
+  );
+});
+
+test("a pending media send owns the upload slot; rejection and upstream failure release admission", async (t) => {
+  let clock = now;
+  let release;
+  let started;
+  const waiting = new Promise((resolve) => {
+    started = resolve;
+  });
+  let calls = 0;
+  const request = await fixture(
+    t,
+    {
+      LO_BOT_TOKEN: "42:synthetic-test-token",
+      LO_APP_URL: "https://app.example.test/",
+    },
+    async () => {
+      calls++;
+      if (calls === 1) {
+        started();
+        await new Promise((resolve) => {
+          release = resolve;
+        });
+        throw new Error("Synthetic upstream failure");
+      }
+      return Response.json({
+        ok: true,
+        result: {
+          message_id: 7,
+          date: now,
+          chat: { id: "9007199254740993", type: "private" },
+          document: { file_id: "own-document" },
+        },
+      });
+    },
+    () => clock,
+  );
+  const login = await request("/api/session", { raw: signed() });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  await request("/api/consent", { allowed: true }, cookie);
+  const first = request.upload("sendDocument", new Uint8Array([1]), cookie);
+  await waiting;
+  clock += 3;
+  assert.equal(
+    (await request.upload("sendDocument", new Uint8Array([2]), cookie)).status,
+    429,
+  );
+  assert.equal(calls, 1);
+  release();
+  assert.equal((await first).status, 503);
+  assert.equal(
+    (await request.upload("sendDocument", new Uint8Array([3]), cookie)).status,
+    200,
+  );
+  assert.equal(calls, 2);
+  assert.deepEqual(await readdir(request.uploadDirectory), []);
+});
+
+test("global POST admission bounds concurrent verification and releases failed slots", async (t) => {
+  let arrived = 0;
+  let allStarted;
+  let release;
+  const waiting = new Promise((resolve) => {
+    allStarted = resolve;
+  });
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
+  const request = await fixture(t, {}, undefined, () => now, {
+    verifyWithGo: async () => {
+      if (++arrived === 8) allStarted();
+      await blocked;
+      throw new Error("Synthetic verification failure");
+    },
+  });
+  const pending = Array.from({ length: 8 }, () =>
+    request("/api/session", { raw: signed() }),
+  );
+  await waiting;
+  assert.equal((await request("/api/session", { raw: signed() })).status, 429);
+  assert.equal(arrived, 8);
+  release();
+  assert.ok(
+    (await Promise.all(pending)).every((response) => response.status === 500),
+  );
+  assert.equal((await request("/api/session", { raw: signed() })).status, 500);
+  assert.equal(arrived, 9);
+});
+
+test("upload length is mandatory and capped before creating temporary files", async (t) => {
+  let clock = now;
+  const request = await fixture(
+    t,
+    {
+      LO_BOT_TOKEN: "42:synthetic-test-token",
+      LO_APP_URL: "https://app.example.test/",
+    },
+    undefined,
+    () => clock,
+  );
+  const login = await request("/api/session", { raw: signed() });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  await request("/api/consent", { allowed: true }, cookie);
+  for (const [length, expected] of [
+    [undefined, 411],
+    ["0", 411],
+    [String((50 << 20) + 1), 413],
+  ]) {
+    clock += 3;
+    const status = await new Promise((resolve, reject) => {
+      const incoming = httpRequest(
+        `${request.origin}/api/bot/upload?operation=sendDocument&name=fixture.bin`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/octet-stream",
+            "x-sdk-test": "1",
+            cookie,
+            ...(length === undefined ? {} : { "content-length": length }),
+          },
+        },
+        (response) => {
+          response.resume();
+          response.on("end", () => resolve(response.statusCode));
+        },
+      );
+      incoming.on("error", reject);
+      incoming.flushHeaders();
+    });
+    assert.equal(status, expected);
+    assert.deepEqual(await readdir(request.uploadDirectory), []);
+  }
+});
+
+test("disconnect aborts a pending SDK upload and removes its private temporary file", async (t) => {
+  let started;
+  let cancelled;
+  const waiting = new Promise((resolve) => {
+    started = resolve;
+  });
+  const aborted = new Promise((resolve) => {
+    cancelled = resolve;
+  });
+  const request = await fixture(
+    t,
+    {
+      LO_BOT_TOKEN: "42:synthetic-test-token",
+      LO_APP_URL: "https://app.example.test/",
+    },
+    async (_url, options) => {
+      started();
+      return new Promise((_resolve, reject) =>
+        options.signal.addEventListener(
+          "abort",
+          () => {
+            cancelled();
+            reject(options.signal.reason);
+          },
+          { once: true },
+        ),
+      );
+    },
+  );
+  const login = await request("/api/session", { raw: signed() });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  await request("/api/consent", { allowed: true }, cookie);
+  const incoming = httpRequest(
+    `${request.origin}/api/bot/upload?operation=sendDocument&name=fixture.bin`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/octet-stream",
+        "content-length": "3",
+        "x-sdk-test": "1",
+        cookie,
+      },
+    },
+  );
+  incoming.on("error", () => {});
+  incoming.end(Buffer.from([1, 2, 3]));
+  await waiting;
+  assert.equal((await readdir(request.uploadDirectory)).length, 1);
+  incoming.destroy();
+  await aborted;
+  for (
+    let attempt = 0;
+    attempt < 20 && (await readdir(request.uploadDirectory)).length;
+    attempt++
+  )
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.deepEqual(await readdir(request.uploadDirectory), []);
 });

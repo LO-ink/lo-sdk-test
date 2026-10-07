@@ -257,6 +257,7 @@ test("manual checks without a host cannot send messages and display a failed ser
 test("run report separates confirmed device effects from API responses and exposes failures", async () => {
   versionsUnavailable();
   const report = {
+    owner: { appId: "fixture-app", userId: "fixture-user" },
     id: "fixture",
     startedAt: "2026-10-06T00:00:00Z",
     state: "finished" as const,
@@ -299,6 +300,14 @@ test("run report separates confirmed device effects from API responses and expos
         detail: "Confirmation required",
         durationMs: 0,
       },
+      {
+        id: "cleanup",
+        label: "Cleanup",
+        group: "Finish",
+        state: "passed" as const,
+        detail: "Restored",
+        durationMs: 0,
+      },
     ],
   };
   let exported = 0;
@@ -306,6 +315,7 @@ test("run report separates confirmed device effects from API responses and expos
   const page = render(
     <RunPage
       report={report}
+      identity={report.owner}
       interaction={null}
       starting={false}
       stopping={false}
@@ -989,4 +999,158 @@ test("touch ownership preserves controls, scrolling, cancellation and pinch gest
   touch("touchmove", 100, 100);
   touch("touchend", 100, 100);
   assert.deepEqual(changes, ["manual"]);
+});
+
+test("invalid JSON stays editable with an associated error inside the parameters dialog", async () => {
+  const hostCalls: string[] = [];
+  Object.assign(globalThis, {
+    LO: {
+      MiniAppNative: {
+        protocolVersion: 1,
+        generation: "editor:fixture",
+        operations: ["setOrientationLock"],
+        capabilities: ["orientation"],
+        launchData: "fixture-launch",
+        snapshot: () => ({ colorScheme: "light" }),
+        subscribe: () => () => {},
+        postMessage: (raw: string) => {
+          hostCalls.push(JSON.parse(raw).kind);
+        },
+      },
+    },
+  });
+  globalThis.fetch = async () =>
+    Response.json({ appConfigured: true, botConfigured: false });
+  try {
+    const page = render(<App />);
+    fireEvent.click(page.getByRole("tab", { name: "Вручную" }));
+    fireEvent.click(
+      page.getByRole("button", { name: "Параметры Зафиксировать ориентацию" }),
+    );
+    const modal = page.getByRole("dialog") as HTMLDialogElement;
+    const field = page.getByRole("textbox", {
+      name: /Параметры JSON/,
+    }) as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: "{" } });
+    fireEvent.click(page.getByRole("button", { name: "Запустить" }));
+    assert.equal(modal.open, true);
+    assert.equal(field.value, "{");
+    assert.equal(field.getAttribute("aria-invalid"), "true");
+    assert.equal(document.activeElement, field);
+    const error = document.getElementById(
+      field.getAttribute("aria-describedby")!,
+    )!;
+    assert.equal(modal.contains(error), true);
+    assert.match(error.textContent!, /Некорректный JSON/);
+    assert.equal(hostCalls.length, 0);
+    fireEvent.change(field, { target: { value: '{"locked":true}' } });
+    assert.equal(field.hasAttribute("aria-invalid"), false);
+    fireEvent.click(page.getByRole("button", { name: "Запустить" }));
+    await waitFor(() => assert.ok(hostCalls.includes("request")));
+    assert.equal(page.queryByRole("dialog"), null);
+  } finally {
+    cleanup();
+    Reflect.deleteProperty(globalThis, "LO");
+  }
+});
+
+test("deferred controls disappear from the report and detail when owner or cleanup is invalid", () => {
+  versionsUnavailable();
+  const identity = { appId: "app", userId: "owner" };
+  const report: RunReport = {
+    id: "report",
+    owner: identity,
+    state: "finished",
+    startedAt: new Date().toISOString(),
+    checks: [
+      {
+        id: "native:close",
+        label: "Close fixture",
+        group: "Bridge",
+        state: "manual",
+        durationMs: 0,
+        detail: "Deferred",
+      },
+      {
+        id: "cleanup",
+        label: "Cleanup",
+        group: "Finish",
+        state: "passed",
+        durationMs: 0,
+        detail: "Restored",
+      },
+    ],
+  };
+  const props = {
+    report,
+    identity,
+    interaction: null,
+    starting: false,
+    stopping: false,
+    exporting: false,
+    onStart() {},
+    onStop() {},
+    onExport() {},
+    onDeferred() {},
+  };
+  const page = render(<RunPage {...props} />);
+  assert.ok(page.getByRole("button", { name: "Close fixture" }));
+  fireEvent.click(page.getByRole("button", { name: "Все" }));
+  assert.ok(page.getByText("Проверить после прогона"));
+  for (const changed of [
+    { identity: { ...identity, userId: "foreign" } },
+    { report: { ...report, state: "cancelled" as const } },
+    { report: { ...report, resumeBlocked: true } },
+    {
+      report: {
+        ...report,
+        checks: report.checks.map((c) =>
+          c.id === "cleanup" ? { ...c, state: "failed" as const } : c,
+        ),
+      },
+    },
+  ]) {
+    page.rerender(<RunPage {...props} {...changed} />);
+    assert.equal(page.queryByRole("button", { name: "Close fixture" }), null);
+    assert.equal(page.queryByText("Проверить после прогона"), null);
+  }
+});
+
+test("media requests send the original File as raw bytes and retain server error handling", async () => {
+  const { uploadFile } = await import("../web/api.ts");
+  const file = new File(
+    [new Uint8Array([0, 255, 127, 65])],
+    "файл & фото.png",
+    { type: "image/png" },
+  );
+  let attempts = 0;
+  globalThis.fetch = async (url, options) => {
+    attempts++;
+    const parsed = new URL(String(url), "https://sdk-test.example");
+    assert.equal(parsed.pathname, "/api/bot/upload");
+    assert.equal(parsed.searchParams.get("operation"), "sendPhoto");
+    assert.equal(parsed.searchParams.get("name"), file.name);
+    assert.equal(parsed.searchParams.get("mime"), "image/png");
+    assert.equal(options?.body, file);
+    assert.equal(options?.credentials, "same-origin");
+    assert.deepEqual(options?.headers, {
+      "content-type": "application/octet-stream",
+      "x-sdk-test": "1",
+    });
+    return attempts === 1
+      ? Response.json({ uploaded: true })
+      : Response.json(
+          { message: "Лимит загрузки", code: "rate-limit", retryAfterSec: 2 },
+          { status: 429 },
+        );
+  };
+  assert.deepEqual(await uploadFile("sendPhoto", file), { uploaded: true });
+  await assert.rejects(
+    uploadFile("sendPhoto", file),
+    (error: Error & { status?: number }) => {
+      assert.equal(error.status, 429);
+      assert.match(error.message, /Лимит загрузки.*пауза 2 с/);
+      return true;
+    },
+  );
 });

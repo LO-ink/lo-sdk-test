@@ -10,7 +10,7 @@ import {
   type RunReport,
 } from "./runner.ts";
 import { RunInteraction } from "./RunInteraction.tsx";
-import { canVerifyDelivery, isDeferredCheck } from "./deferred.ts";
+import { canRunDeferred, type DeferredIdentity } from "./deferred.ts";
 import type { InteractionView } from "./interaction.ts";
 const labels = {
   pending: "Ожидает",
@@ -85,6 +85,7 @@ export function RunPage({
   onStop,
   onExport,
   onDeferred,
+  identity = null,
 }: {
   report: RunReport | null;
   interaction: InteractionView | null;
@@ -97,6 +98,7 @@ export function RunPage({
   onStop: () => void;
   onExport: () => void;
   onDeferred: (id: string) => void;
+  identity?: DeferredIdentity | null;
 }) {
   const [filter, setFilter] = useState<keyof typeof filters>("Ошибки");
   const resumable = canResume(report) && Boolean(onResume);
@@ -109,11 +111,8 @@ export function RunPage({
   const confirmed = coverage.reduce((sum, item) => sum + item.confirmed, 0);
   const bridgeTotal = coverage.reduce((sum, item) => sum + item.total, 0);
   const deferredChecks =
-    report?.checks.filter(
-      (check) =>
-        check.state === "manual" &&
-        isDeferredCheck(check.id) &&
-        (check.id !== "bot:delivery" || canVerifyDelivery(report)),
+    report?.checks.filter((check) =>
+      canRunDeferred(report, check.id, identity),
     ) ?? [];
   const shown =
     report?.checks.filter(
@@ -391,7 +390,7 @@ export function RunPage({
                         <Text tone="secondary" size="label">
                           {check.detail}
                         </Text>
-                        {check.state === "manual" &&
+                        {canRunDeferred(report, check.id, identity) &&
                           /:(close|sendData)$/.test(check.id) && (
                             <Button
                               variant="secondary"

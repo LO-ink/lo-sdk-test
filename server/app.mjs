@@ -1,6 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { resolve, extname, dirname } from "node:path";
+import { readFile, mkdir, mkdtemp, open, rm } from "node:fs/promises";
+import { openAsBlob } from "node:fs";
+import { tmpdir } from "node:os";
+import { resolve, extname, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { verifyInitData, InitDataError } from "@lo-ink/miniapp-sdk/server";
 import {
@@ -16,6 +18,7 @@ import { createSecretaryFlow } from "./secretary.mjs";
 import { conformance } from "./conformance.mjs";
 import { createVersionChecker } from "./versions.mjs";
 import { GoVerifierUnavailable } from "./initdata-go.mjs";
+import { retainReport, ReportError } from "./reports.mjs";
 
 const runtimeSdkVersions = Object.fromEntries(
   await Promise.all(
@@ -53,6 +56,8 @@ class RequestError extends Error {
 async function readJson(request, limit) {
   if (!request.headers["content-type"]?.startsWith("application/json"))
     throw new RequestError(415, "Требуется JSON");
+  if (Number(request.headers["content-length"]) > limit)
+    throw new RequestError(413, "Запрос слишком большой");
   const chunks = [];
   let size = 0;
   for await (const chunk of request) {
@@ -66,6 +71,43 @@ async function readJson(request, limit) {
     throw new RequestError(400, "Некорректный JSON");
   }
 }
+async function readUpload(request, directory, state, signal) {
+  if (request.headers["content-type"] !== "application/octet-stream")
+    throw new RequestError(415, "Требуется двоичный файл");
+  const length = request.headers["content-length"];
+  if (typeof length !== "string" || !/^[1-9][0-9]*$/.test(length))
+    throw new RequestError(411, "Требуется размер файла");
+  const size = Number(length);
+  if (!Number.isSafeInteger(size) || size > 50 << 20)
+    throw new RequestError(413, "Файл превышает 50 МиБ");
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  state.directory = await mkdtemp(join(directory, "upload-"));
+  const path = join(state.directory, "media");
+  const file = await open(path, "wx", 0o600);
+  const hash = createHash("sha256");
+  let received = 0;
+  const abort = () => request.destroy(signal.reason);
+  signal.addEventListener("abort", abort, { once: true });
+  try {
+    signal.throwIfAborted();
+    for await (const chunk of request) {
+      received += chunk.length;
+      if (received > size)
+        throw new RequestError(413, "Размер файла превышает заявленный");
+      hash.update(chunk);
+      await file.writeFile(chunk);
+      signal.throwIfAborted();
+    }
+    if (received !== size)
+      throw new RequestError(400, "Файл передан не полностью");
+  } finally {
+    signal.removeEventListener("abort", abort);
+    await file.close();
+  }
+  // File-backed Blob keeps media out of the process heap and preserves streaming.
+  return { data: await openAsBlob(path), sha256: hash.digest("hex") };
+}
+
 function errorResponse(error) {
   if (error instanceof GoVerifierUnavailable)
     return [503, { message: "Проверка подписи Go недоступна" }];
@@ -114,6 +156,7 @@ function errorResponse(error) {
     return [400, { code: error.code, message: error.message }];
   if (
     error instanceof RequestError ||
+    error instanceof ReportError ||
     [400, 403, 404, 409, 410, 503].includes(error.status)
   )
     return [error.status, { message: error.message }];
@@ -143,6 +186,10 @@ export function createHandler(configuration = process.env, dependencies = {}) {
   const budgets = new Map();
   const reports = new Map();
   let polling = false;
+  let activePosts = 0;
+  let uploadActive = false;
+  const uploadDirectory =
+    configuration.LO_UPLOAD_DIR ?? join(tmpdir(), "lo-sdk-test-uploads");
   const secretaryFlow = createSecretaryFlow(configuration, dependencies);
   const client = botConfigured
     ? createBotClient(
@@ -187,6 +234,19 @@ export function createHandler(configuration = process.env, dependencies = {}) {
   });
   return async function handler(request, response) {
     let activeSession;
+    let admitted = false;
+    let uploading = false;
+    const uploadState = {};
+    let uploadSignal;
+    let uploadDigest;
+    let disconnect;
+    const uploadController = new AbortController();
+    async function cleanUpload() {
+      if (uploadState.directory) {
+        await rm(uploadState.directory, { recursive: true });
+        delete uploadState.directory;
+      }
+    }
     try {
       const url = new URL(request.url, "http://localhost");
       if (url.pathname.startsWith("/reports/")) {
@@ -240,6 +300,10 @@ export function createHandler(configuration = process.env, dependencies = {}) {
           .map((value) => new URL(value).origin);
         if (request.headers.origin && !origins.includes(request.headers.origin))
           throw new RequestError(403, "Недопустимый источник запроса");
+        if (activePosts >= 8)
+          throw new RequestError(429, "Сервер занят. Повторите проверку позже");
+        activePosts++;
+        admitted = true;
         if (url.pathname === "/api/session") {
           if (!appConfigured)
             throw new RequestError(
@@ -411,56 +475,37 @@ export function createHandler(configuration = process.env, dependencies = {}) {
         if (url.pathname === "/api/report") {
           const current = session(request);
           const body = await readJson(request, 512 << 10);
-          if (
-            !body?.report ||
-            typeof body.report !== "object" ||
-            Array.isArray(body.report)
-          )
-            throw new RequestError(400, "Ожидается отчёт проверки");
-          for (const [path, value] of reports)
-            if (value.expires <= now()) reports.delete(path);
-          // Only one short-lived file per verified session; native downloads cannot use WebView cookies.
-          if (current.reportPath) reports.delete(current.reportPath);
-          if (reports.size >= 32)
-            throw new RequestError(
-              429,
-              "Дождитесь завершения сохранения отчётов",
-            );
-          const path = `/reports/${randomBytes(24).toString("base64url")}.json`;
-          const report = Object.fromEntries(
-            [
-              "createdAt",
-              "appVersion",
-              "bridgeCoverage",
-              "adapter",
-              "capabilities",
-              "results",
-              "events",
-              "log",
-              "automatedRun",
-              "sdkBuild",
-            ]
-              .filter((key) => Object.hasOwn(body.report, key))
-              .map((key) => [key, body.report[key]]),
-          );
-          const data = JSON.stringify(
-            report,
-            (key, value) =>
-              /token|hash|signature|initdata|queryid/i.test(key)
-                ? "[скрыто]"
-                : value,
-            2,
-          );
-          reports.set(path, { data, expires: now() + 60 });
-          current.reportPath = path;
+          const path = retainReport(reports, current, body?.report, now());
           json(response, 200, { path });
           return;
         }
-        if (url.pathname === "/api/bot") {
-          // Public deterministic conformance uses a tiny body and no credentials.
+        if (["/api/bot", "/api/bot/upload"].includes(url.pathname)) {
+          const upload = url.pathname === "/api/bot/upload";
           const current = findSession(request);
           activeSession = current;
-          const body = await readJson(request, current ? 72 << 20 : 1024);
+          let body;
+          if (upload) {
+            if (!current)
+              throw new RequestError(401, "Сначала проверьте подпись запуска");
+            const operation = url.searchParams.get("operation");
+            const name = url.searchParams.get("name");
+            const mime = url.searchParams.get("mime");
+            if (
+              !["sendPhoto", "sendDocument", "sendVoice", "sendVideo"].includes(
+                operation,
+              ) ||
+              !name ||
+              Buffer.byteLength(name) > 255 ||
+              // eslint-disable-next-line no-control-regex -- Reject control bytes in uploaded names.
+              /[/\\\x00-\x1f\x7f]/.test(name) ||
+              (mime &&
+                (mime.length > 128 || !/^[\w.+-]+\/[\w.+-]+$/.test(mime)))
+            )
+              throw new RequestError(400, "Некорректные параметры файла");
+            body = { operation, file: { name, ...(mime ? { mime } : {}) } };
+          } else {
+            body = await readJson(request, 4096);
+          }
           if (body?.operation === "conformance") {
             json(response, 200, await conformance());
             return;
@@ -491,7 +536,32 @@ export function createHandler(configuration = process.env, dependencies = {}) {
               429,
               "Дождитесь 2 секунд между тестами бота",
             );
-          current.budget.lastSend = now();
+          if (upload) {
+            if (uploadActive)
+              throw new RequestError(429, "Другая загрузка ещё выполняется");
+            uploadActive = true;
+            uploading = true;
+            current.budget.lastSend = now();
+            uploadSignal = AbortSignal.any([
+              uploadController.signal,
+              AbortSignal.timeout(60000),
+            ]);
+            disconnect = () => {
+              if (!response.writableFinished)
+                uploadController.abort(new Error("Upload client disconnected"));
+            };
+            response.once("close", disconnect);
+            const media = await readUpload(
+              request,
+              uploadDirectory,
+              uploadState,
+              uploadSignal,
+            );
+            body.file.data = media.data;
+            uploadDigest = media.sha256;
+          } else {
+            current.budget.lastSend = now();
+          }
           const conversationId = current.userId;
           let result;
           if (operation === "getIdentity") result = await client.getIdentity();
@@ -681,21 +751,9 @@ export function createHandler(configuration = process.env, dependencies = {}) {
                 );
               inputFile = { fileId: current.files[kind] };
             } else {
-              const file = body.file;
-              if (
-                !file ||
-                typeof file.data !== "string" ||
-                file.data.length % 4 !== 0 ||
-                /[^A-Za-z0-9+/=]/.test(file.data) ||
-                Buffer.from(file.data, "base64").toString("base64") !==
-                  file.data
-              )
-                throw new RequestError(400, "Ожидается файл в base64");
-              inputFile = {
-                data: new Uint8Array(Buffer.from(file.data, "base64")),
-                name: file.name,
-                ...(file.mime ? { mime: file.mime } : {}),
-              };
+              if (!upload)
+                throw new RequestError(400, "Выберите файл для загрузки");
+              inputFile = body.file;
             }
             try {
               result = await client[
@@ -706,19 +764,20 @@ export function createHandler(configuration = process.env, dependencies = {}) {
                     : kind === "video"
                       ? "sendVideo"
                       : "sendVoice"
-              ]({
-                conversationId,
-                [kind]: inputFile,
-                replyMarkup: markup(),
-                ...(kind === "voice" ? {} : { caption: "LO SDK Test: файл" }),
-              });
+              ](
+                {
+                  conversationId,
+                  [kind]: inputFile,
+                  replyMarkup: markup(),
+                  ...(kind === "voice" ? {} : { caption: "LO SDK Test: файл" }),
+                },
+                uploadSignal ? { signal: uploadSignal } : undefined,
+              );
               current.files[kind] = result.fileId;
               if (kind === "document") {
                 delete current.fileMetadata;
                 if (!operation.startsWith("reuse"))
-                  current.documentDigest = createHash("sha256")
-                    .update(inputFile.data)
-                    .digest("hex");
+                  current.documentDigest = uploadDigest;
               }
             } catch (error) {
               if (
@@ -729,6 +788,7 @@ export function createHandler(configuration = process.env, dependencies = {}) {
               throw error;
             }
           } else throw new RequestError(400, "Неизвестная проверка бота");
+          await cleanUpload();
           json(response, 200, { mode: "live", operation, result });
           return;
         }
@@ -766,12 +826,24 @@ export function createHandler(configuration = process.env, dependencies = {}) {
         "cache-control": "no-cache",
       });
       response.end(request.method === "HEAD" ? undefined : data);
-    } catch (error) {
+    } catch (caught) {
+      let error = caught;
+      try {
+        await cleanUpload();
+      } catch {
+        error = new RequestError(503, "Временное хранилище файлов недоступно");
+      }
       if (error instanceof NotAllowed && activeSession)
         activeSession.allowed = false;
       const [status, body] = errorResponse(error);
+      if ([411, 413, 429].includes(status)) response.shouldKeepAlive = false;
       if (!response.headersSent) json(response, status, body);
       else response.end();
+    } finally {
+      if (disconnect) response.removeListener("close", disconnect);
+      // Failed cleanup keeps upload admission closed until restart and recovery.
+      if (uploading && !uploadState.directory) uploadActive = false;
+      if (admitted) activePosts--;
     }
   };
 }

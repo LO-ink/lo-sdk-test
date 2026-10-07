@@ -1,9 +1,14 @@
-import type { MiniAppClient, MiniAppOperation } from "@lo-ink/miniapp-sdk";
+import type {
+  MiniAppClient,
+  MiniAppOperation,
+  OperationInput,
+} from "@lo-ink/miniapp-sdk";
 import { cases, events, operationNames } from "./cases.ts";
 import {
   bounded,
   pause,
   recoveryOperations,
+  recoveryButtons,
   unfinished,
   type Check,
   type CheckResult,
@@ -13,6 +18,16 @@ import type { WriteAccessResult } from "./consent.ts";
 import type { Interact } from "./interaction.ts";
 import type { AudioStart } from "./audio.ts";
 import { deferredOperations, guidedBridgeCheck } from "./bridge-checks.ts";
+
+// Secure reads wrap their value; cloud and device reads return it directly.
+// Keep initial checks and resumed fixtures on the same response contract.
+function storageValue(storage: string, result: unknown): unknown {
+  return storage === "secureStorage"
+    ? result && typeof result === "object" && "value" in result
+      ? result.value
+      : undefined
+    : result;
+}
 export type SuiteContext = {
   primary?: boolean;
   runId?: string;
@@ -22,6 +37,11 @@ export type SuiteContext = {
   checkpoint?: () => void;
   client: MiniAppClient | null;
   api: <T>(path: string, body: unknown, signal: AbortSignal) => Promise<T>;
+  upload?: <T>(
+    operation: string,
+    file: File,
+    signal: AbortSignal,
+  ) => Promise<T>;
   consent: boolean | null;
   includeBot: boolean;
   writeAccess?: Promise<WriteAccessResult>;
@@ -51,6 +71,27 @@ export function createSuite(context: SuiteContext) {
   const removed = new Set<string>();
   const passed = new Set<string>();
   const mutations = new Map<MiniAppOperation, number>();
+  // Older aggregate debt cannot prove which buttons still need restoration.
+  const buttons = new Set(
+    context.recovery?.buttons ??
+      (context.recovery?.mutations.includes("setButton")
+        ? recoveryButtons
+        : []),
+  );
+  const mutated = (operation: MiniAppOperation, input: unknown) => {
+    if (!(recoveryOperations as readonly string[]).includes(operation)) return;
+    if (
+      operation === "setButton" &&
+      input &&
+      typeof input === "object" &&
+      "button" in input
+    ) {
+      const button = recoveryButtons.find((button) => button === input.button);
+      if (button) buttons.add(button);
+    }
+    mutations.set(operation, (mutations.get(operation) ?? 0) + 1);
+    context.checkpoint?.();
+  };
   let original = client?.adapter.snapshot?.();
   let resources:
     { message: boolean; files: string[]; metadata: boolean } | undefined;
@@ -301,6 +342,15 @@ export function createSuite(context: SuiteContext) {
             detail:
               "Закрывает мини-приложение. Проверяется кнопкой в отчёте после остальных шагов; результат сохраняется до повторного открытия.",
           };
+        if (
+          (name === "requestFullscreen" || name === "exitFullscreen") &&
+          typeof original?.isFullscreen !== "boolean"
+        )
+          return {
+            state: "manual",
+            detail:
+              "Исходный режим экрана неизвестен; безопасное восстановление не подтверждено",
+          };
         if (!context.interact && !autoStorage)
           return {
             state: "manual",
@@ -340,10 +390,7 @@ export function createSuite(context: SuiteContext) {
               deferCleanup: (restore) => {
                 finalizer = restore;
               },
-              mutated: (operation) => {
-                mutations.set(operation, (mutations.get(operation) ?? 0) + 1);
-                context.checkpoint?.();
-              },
+              mutated,
               mutationRejected: (operation) => {
                 const remaining = (mutations.get(operation) ?? 0) - 1;
                 if (remaining > 0) mutations.set(operation, remaining);
@@ -401,17 +448,13 @@ export function createSuite(context: SuiteContext) {
               signal,
             );
             assert(
-              (storage === "secureStorage"
-                ? (stored as { value?: unknown })?.value
-                : stored) === value,
+              storageValue(storage, stored) === value,
               "Запись не подтверждена чтением тестового значения",
             );
           }
           if (/Get$/.test(name))
             assert(
-              (storage === "secureStorage"
-                ? (result as { value?: unknown })?.value
-                : result) === value,
+              storageValue(storage, result) === value,
               "Прочитанное значение не совпадает с записанным",
             );
           if (/GetMany$/.test(name))
@@ -485,6 +528,7 @@ export function createSuite(context: SuiteContext) {
             client: client!,
             interact: context.interact!,
             observed: context.observed,
+            mutated,
           },
           signal,
           {
@@ -666,7 +710,7 @@ export function createSuite(context: SuiteContext) {
         : undefined,
       evidence: "response",
       execute: async (signal) => {
-        let file: { data: string; name: string; mime: string } | undefined;
+        let file: File | undefined;
         if (
           ["sendPhoto", "sendDocument", "sendVoice", "sendVideo"].includes(
             operation,
@@ -682,18 +726,13 @@ export function createSuite(context: SuiteContext) {
                   : "/fixtures/test.txt";
           const response = await fetch(source, { signal });
           assert(response.ok, "Тестовый файл не загрузился");
-          const bytes = new Uint8Array(await response.arrayBuffer());
+          const bytes = await response.blob();
           assert(
-            bytes.length > 0 && bytes.length < 1000000,
+            bytes.size > 0 && bytes.size < 1000000,
             "Некорректный размер тестового файла",
           );
-          let binary = "";
-          for (let i = 0; i < bytes.length; i += 8192)
-            binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-          file = {
-            data: btoa(binary),
-            name: source.split("/").pop()!,
-            mime:
+          file = new File([bytes], source.split("/").pop()!, {
+            type:
               operation === "sendPhoto"
                 ? "image/png"
                 : operation === "sendVoice"
@@ -701,15 +740,24 @@ export function createSuite(context: SuiteContext) {
                   : operation === "sendVideo"
                     ? "video/mp4"
                     : "text/plain",
-          };
+          });
         }
         const request = async () => {
           if (lastBot)
             await pause(Math.max(0, 2300 - (Date.now() - lastBot)), signal);
           try {
+            if (file) {
+              if (!context.upload)
+                throw new Error("Загрузка файлов не настроена");
+              return await context.upload<{ mode: string; result: unknown }>(
+                operation,
+                file,
+                signal,
+              );
+            }
             return await context.api<{ mode: string; result: unknown }>(
               "bot",
-              { operation, ...(file ? { file } : {}) },
+              { operation },
               signal,
             );
           } finally {
@@ -837,10 +885,13 @@ export function createSuite(context: SuiteContext) {
           errors.push(storage);
         }
       }
-      const restore = async (name: MiniAppOperation, input: unknown) => {
+      const restore = async <K extends MiniAppOperation>(
+        name: K,
+        input: OperationInput<K>,
+      ) => {
         try {
           const restored = await bounded(
-            (s) => client!.call(name, input as never, { signal: s }),
+            (s) => client!.call(name, input, { signal: s }),
             signal,
             3000,
           );
@@ -851,12 +902,16 @@ export function createSuite(context: SuiteContext) {
               name.replace(/^stop/, "start") as MiniAppOperation,
             );
             if (name === "closeQrScanner") mutations.delete("openQrScanner");
-            if (name === "exitFullscreen")
+            if (name === "exitFullscreen" || name === "requestFullscreen") {
               mutations.delete("requestFullscreen");
+              mutations.delete("exitFullscreen");
+            }
             context.checkpoint?.();
           }
+          return true;
         } catch {
           errors.push(name);
+          return false;
         }
       };
       for (const [start, stop] of [
@@ -877,11 +932,17 @@ export function createSuite(context: SuiteContext) {
         await restore("updateBiometryToken", { token: "" });
       if (mutations.has("openQrScanner"))
         await restore("closeQrScanner", undefined);
-      if (mutations.has("requestFullscreen")) {
-        if (original?.isFullscreen) {
-          mutations.delete("requestFullscreen");
-          context.checkpoint?.();
-        } else await restore("exitFullscreen", undefined);
+      if (
+        mutations.has("requestFullscreen") ||
+        mutations.has("exitFullscreen")
+      ) {
+        if (typeof original?.isFullscreen !== "boolean")
+          errors.push("fullscreen: исходное состояние неизвестно");
+        else
+          await restore(
+            original.isFullscreen ? "requestFullscreen" : "exitFullscreen",
+            undefined,
+          );
       }
       for (const [name, color] of [
         ["setHeaderColor", original?.theme?.headerBackground],
@@ -894,14 +955,20 @@ export function createSuite(context: SuiteContext) {
           else errors.push(name);
         }
       if (mutations.has("setButton")) {
-        const before = errors.length;
-        for (const button of ["main", "secondary", "back", "settings"]) {
-          if (!client?.supports(`${button}Button` as never)) continue;
-          await restore("setButton", { button, visible: false });
-        }
-        if (errors.length === before) {
-          mutations.delete("setButton");
-          context.checkpoint?.();
+        if (!buttons.size)
+          errors.push("setButton: кнопки восстановления неизвестны");
+        for (const button of buttons) {
+          if (!client?.supports(`${button}Button`)) {
+            errors.push(`setButton:${button}: мост недоступен`);
+            continue;
+          }
+          if (
+            await restore("setButton", { button, params: { visible: false } })
+          ) {
+            buttons.delete(button);
+            if (!buttons.size) mutations.delete("setButton");
+            context.checkpoint?.();
+          }
         }
       }
       context.appearanceGuard?.(false);
@@ -918,6 +985,7 @@ export function createSuite(context: SuiteContext) {
     mutations: [...mutations.keys()].filter((operation) =>
       (recoveryOperations as readonly string[]).includes(operation),
     ),
+    ...(buttons.size ? { buttons: [...buttons] } : {}),
     original: {
       ...(typeof original?.isOrientationLocked === "boolean"
         ? { isOrientationLocked: original.isOrientationLocked }
@@ -951,6 +1019,11 @@ export function createSuite(context: SuiteContext) {
       for (const storage of context.recovery.written) written.add(storage);
       for (const operation of context.recovery.mutations)
         mutations.set(operation as MiniAppOperation, 1);
+      for (const button of context.recovery.buttons ??
+        (context.recovery.mutations.includes("setButton")
+          ? recoveryButtons
+          : []))
+        buttons.add(button);
       original = context.recovery.original;
       if (!cleanup.skip?.()) await bounded(cleanup.execute, signal, 20000);
       written.clear();
@@ -1002,10 +1075,13 @@ export function createSuite(context: SuiteContext) {
           "Не удалось подготовить тестовый ключ для продолжения",
         );
         assert(
-          (await bounded(
-            (s) => call(`${storage}Get` as MiniAppOperation, { key }, s),
-            signal,
-          )) === value,
+          storageValue(
+            storage,
+            await bounded(
+              (s) => call(`${storage}Get` as MiniAppOperation, { key }, s),
+              signal,
+            ),
+          ) === value,
           "Тестовый ключ для продолжения не подтверждён чтением",
         );
         passed.add(`${storage}Set`);
