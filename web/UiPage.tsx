@@ -19,6 +19,8 @@ import {
   TextField,
 } from "@lo-ink/ui";
 
+import type { ThemePreference } from "./theme.ts";
+
 function CheckIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -36,8 +38,13 @@ function Section({ name, children }: { name: string; children: ReactNode }) {
 }
 const iconSource = "/demo-app-icon.svg";
 
-export function UiPage() {
-  const [theme, setTheme] = useState<"host" | "light" | "dark">("host");
+export function UiPage({
+  theme,
+  onThemeChange,
+}: {
+  theme: ThemePreference;
+  onThemeChange: (theme: ThemePreference) => void;
+}) {
   const [selectedTab, setSelectedTab] = useState("first");
   const [clicks, setClicks] = useState(0);
   const [name, setName] = useState("");
@@ -46,23 +53,20 @@ export function UiPage() {
   const dialog = useRef<HTMLDialogElement>(null);
   const [created, setCreated] = useState(false);
   return (
-    <div
-      className={`ui-catalog${theme === "host" ? "" : " lo-ui-root"}`}
-      data-lo-theme={theme === "host" ? undefined : theme}
-    >
+    <div className="ui-catalog">
       <Stack gap={4}>
         <Heading level={2}>UI компоненты</Heading>
         <Text tone="secondary">
-          Компоненты LO. Действия работают только на этой странице.
+          Выбранная тема применяется ко всему приложению.
         </Text>
-        <Inline gap={2} role="group" aria-label="Тема компонентов">
+        <Inline gap={2} role="group" aria-label="Тема приложения">
           {(["host", "light", "dark"] as const).map((value) => (
             <Button
               key={value}
               size="small"
               variant={theme === value ? "secondary" : "quiet"}
               aria-pressed={theme === value}
-              onClick={() => setTheme(value)}
+              onClick={() => onThemeChange(value)}
             >
               {value === "host"
                 ? "Как в LO"

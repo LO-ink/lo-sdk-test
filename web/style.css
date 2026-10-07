@@ -287,8 +287,8 @@ footer {
 .run-start {
   width: 100%;
 }
-.run-intro {
-  margin-top: 12px;
+.run-secondary {
+  align-self: flex-start;
 }
 
 .run-progress-label {
@@ -296,7 +296,6 @@ footer {
   align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  margin: 20px 0 10px;
 }
 .run-progress-label strong {
   font-variant-numeric: tabular-nums;
@@ -304,7 +303,6 @@ footer {
 
 .run-current {
   min-height: 42px;
-  margin-top: 12px;
 }
 .run-score {
   display: flex;
@@ -536,7 +534,11 @@ summary:focus-visible {
   margin-top: 4px;
   overflow-wrap: anywhere;
 }
-.feed-error {
+.feed-step {
+  white-space: nowrap;
+}
+.feed-error,
+.feed-detail {
   overflow-wrap: anywhere;
   margin-bottom: 0;
 }

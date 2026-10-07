@@ -525,7 +525,13 @@ test("the UI catalog covers all public primitives with local, isolated interacti
     throw new Error("Catalog must stay local");
   };
   const hostTheme = document.documentElement.dataset.loTheme;
-  const page = render(<UiPage />);
+  const selectedThemes: string[] = [];
+  const page = render(
+    <UiPage
+      theme="host"
+      onThemeChange={(theme) => selectedThemes.push(theme)}
+    />,
+  );
   for (const name of [
     "Button",
     "TextField",
@@ -549,11 +555,14 @@ test("the UI catalog covers all public primitives with local, isolated interacti
   const catalog = page
     .getByRole("heading", { name: "UI компоненты" })
     .closest(".ui-catalog") as HTMLElement;
-  assert.equal(catalog.dataset.loTheme, "dark");
+  assert.deepEqual(selectedThemes, ["dark"]);
+  assert.equal(catalog.dataset.loTheme, undefined);
   assert.equal(document.documentElement.dataset.loTheme, hostTheme);
   fireEvent.click(page.getByRole("button", { name: "Светлая" }));
-  assert.equal(catalog.dataset.loTheme, "light");
+  assert.deepEqual(selectedThemes, ["dark", "light"]);
+  assert.equal(catalog.dataset.loTheme, undefined);
   fireEvent.click(page.getByRole("button", { name: "Как в LO" }));
+  assert.deepEqual(selectedThemes, ["dark", "light", "host"]);
   assert.equal(catalog.dataset.loTheme, undefined);
   assert.equal(catalog.classList.contains("lo-ui-root"), false);
   for (const name of [
@@ -1440,4 +1449,67 @@ test("run feed keeps the current step first and previous history disjoint withou
     "Completed 8",
   );
   assert.ok(page.getByRole("heading", { name: "Current action" }));
+});
+
+test("unverified expand and deferred close explain their classification while a guided step shows its full-plan position", () => {
+  versionsUnavailable();
+  const report: RunReport = {
+    id: "classified-fixture",
+    state: "running",
+    startedAt: new Date().toISOString(),
+    checks: [
+      {
+        id: "native:expand",
+        label: "Развернуть панель",
+        group: "LO",
+        state: "manual",
+        detail: "Панель уже развёрнута; увеличение высоты проверить нельзя.",
+        durationMs: 0,
+      },
+      {
+        id: "native:close",
+        label: "Закрыть приложение",
+        group: "LO",
+        state: "manual",
+        detail:
+          "Проверяется после прогона, чтобы не закрыть приложение посередине.",
+        durationMs: 0,
+      },
+      {
+        id: "native:haptic",
+        label: "Вибрация",
+        group: "LO",
+        state: "running",
+        detail: "",
+        durationMs: 0,
+      },
+    ],
+  };
+  const page = render(
+    <RunPage
+      report={report}
+      interaction={{
+        title: "Вибрация",
+        detail: "Подтвердите физический эффект",
+        phase: "confirm",
+        attempt: 1,
+        start() {},
+        repeat() {},
+        answer() {},
+      }}
+      starting={false}
+      stopping={false}
+      exporting={false}
+      onStart={() => {
+        throw new Error("Display must not start a run");
+      }}
+      onStop={() => {}}
+      onExport={() => {}}
+      onDeferred={() => {}}
+    />,
+  );
+  assert.equal(page.getByLabelText("Шаг 3 из 3").textContent, "3 / 3");
+  assert.ok(page.getByText(report.checks[0].detail));
+  assert.ok(page.getByText(report.checks[1].detail));
+  assert.equal(page.getAllByText("Вибрация").length, 1);
 });
