@@ -1,6 +1,12 @@
 import { saveRun } from "./run-storage.ts";
 import type { MiniAppClient } from "@lo-ink/miniapp-sdk";
-import type { Check, CheckResult, RunReport } from "./runner.ts";
+import {
+  hasRecoveryDebt,
+  unfinished,
+  type Check,
+  type CheckResult,
+  type RunReport,
+} from "./runner.ts";
 
 export const deferredKey = "sdk-test.end-action";
 export { lastRunKey } from "./run-storage.ts";
@@ -46,32 +52,34 @@ export function createDeliveryCheck(report: () => RunReport | null): Check {
   };
 }
 export function canVerifyDelivery(report: RunReport | null): boolean {
-  return Boolean(
-    report?.state === "finished" &&
-    typeof report.owner?.appId === "string" &&
-    report.owner.appId &&
-    typeof report.owner?.userId === "string" &&
-    report.owner.userId &&
-    report.checks.some(
-      (check) => check.id === "cleanup" && check.state === "passed",
-    ) &&
-    report.checks.some(
-      (check) => check.id === "bot:delivery" && check.state === "manual",
-    ) &&
-    deliverySendsPassed(report),
-  );
+  return canRunDeferred(report, "bot:delivery", report?.owner ?? null);
 }
 export function isDeferredCheck(id: string): boolean {
   return /^(native|compat):(close|sendData)$/.test(id) || id === "bot:delivery";
 }
-function ownsDelivery(
+/** The same invariant gates UI actions, persisted attempts, and result commits. */
+export function canRunDeferred(
   report: RunReport | null,
-  identity: DeferredIdentity,
+  id: string,
+  identity: DeferredIdentity | null,
 ): boolean {
-  return (
-    canVerifyDelivery(report) &&
-    report?.owner?.appId === identity.appId &&
-    report.owner.userId === identity.userId
+  return Boolean(
+    report?.state === "finished" &&
+    identity?.appId &&
+    identity.userId &&
+    report.owner?.appId === identity.appId &&
+    report.owner?.userId === identity.userId &&
+    !report.resumeBlocked &&
+    !hasRecoveryDebt(report) &&
+    !report.checks.some(unfinished) &&
+    isDeferredCheck(id) &&
+    report.checks.some(
+      (check) => check.id === "cleanup" && check.state === "passed",
+    ) &&
+    report.checks.some(
+      (check) => check.id === id && check.state === "manual",
+    ) &&
+    (id !== "bot:delivery" || deliverySendsPassed(report)),
   );
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -91,12 +99,7 @@ export function createDeferredTicket(
   now = Date.now(),
 ): DeferredTicket {
   const [bridgeId, operation, extra] = id.split(":");
-  if (
-    extra ||
-    !isDeferredCheck(id) ||
-    (operation === "delivery" && !ownsDelivery(report, identity)) ||
-    !report.checks.some((check) => check.id === id && check.state === "manual")
-  )
+  if (extra || !canRunDeferred(report, id, identity))
     throw new Error("Завершающая проверка недоступна");
   const attemptId = crypto.randomUUID();
   return {
@@ -129,8 +132,7 @@ export function readDeferredTicket(
       value.runId !== report.id ||
       value.appId !== identity.appId ||
       value.userId !== identity.userId ||
-      !isDeferredCheck(value.id) ||
-      (value.operation === "delivery" && !ownsDelivery(report, identity)) ||
+      !canRunDeferred(report, value.id, identity) ||
       value.id !== `${value.bridgeId}:${value.operation}` ||
       !report.checks.some(
         (check) => check.id === value.id && check.state === "manual",
@@ -181,10 +183,7 @@ export function applyDeferredResult(
   if (
     !report ||
     report.id !== ticket.runId ||
-    !report.checks.some(
-      (check) => check.id === ticket.id && check.state === "manual",
-    ) ||
-    (ticket.operation === "delivery" && !ownsDelivery(report, ticket))
+    !canRunDeferred(report, ticket.id, ticket)
   )
     return report;
   return {

@@ -13,6 +13,12 @@ try {
     "--name",
     name,
     "--read-only",
+    "--mount",
+    "type=volume,destination=/var/lib/lo-sdk-test",
+    "--memory=256m",
+    "--memory-swap=256m",
+    "--cpus=0.5",
+    "--pids-limit=64",
     "--cap-drop=ALL",
     "--security-opt=no-new-privileges",
     "-p",
@@ -46,6 +52,6 @@ try {
   );
 } finally {
   try {
-    docker("rm", "-f", name);
+    docker("rm", "-f", "-v", name);
   } catch {}
 }

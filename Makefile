@@ -54,6 +54,7 @@ go-security:
 container:
 	docker build --platform linux/amd64 --build-arg BUILD_REVISION="$(BUILD_REVISION)" -t lo-sdk-test:ci .
 	BUILD_REVISION="$(BUILD_REVISION)" node scripts/check-container.mjs lo-sdk-test:ci
+	node scripts/check-upload-budget.mjs lo-sdk-test:ci
 
 .PHONY: browser
 browser:

@@ -32,4 +32,13 @@ docker compose --env-file deployment.env -f compose.yml ps
 
 For emergency recovery, set SDK_TEST_IMAGE to a saved digest or previous local image and run `docker compose -p lo-sdk-test -f compose.yml up -d --no-deps --wait web`. Update deployment.env and check /release.json afterwards.
 
+The `secretary-state` disk volume is required even when Secretary checks are
+disabled: `/var/lib/lo-sdk-test/uploads` stores bounded temporary media. The image
+initializes it for the `node` user. Do not replace it with tmpfs or remove it from
+the read-only runtime. Startup removes interrupted upload directories; completed
+uploads are removed before their request finishes.
+
+Retries of an already healthy, publicly verified release repair missing or stale
+receipts and preserve the recorded timestamp when the digest and revision match.
+
 DNS, runtime.env, Traefik and the root-owned deployment script are infrastructure settings. Retain the previous image until the new deployment is confirmed.

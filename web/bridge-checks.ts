@@ -12,7 +12,7 @@ type Context = {
   interact: Interact;
   observed: () => Record<string, string>;
   appearanceGuard?: (testing: boolean, operation?: MiniAppOperation) => void;
-  mutated?: (operation: MiniAppOperation) => void;
+  mutated?: (operation: MiniAppOperation, input: unknown) => void;
   mutationRejected?: (operation: MiniAppOperation) => void;
   panelExpanded?: () => boolean | undefined;
   deferCleanup?: (restore: (signal: AbortSignal) => Promise<void>) => void;
@@ -35,7 +35,7 @@ export async function guidedBridgeCheck(
     value: unknown = cases[operation].input,
   ) => {
     signal.throwIfAborted();
-    context.mutated?.(operation);
+    context.mutated?.(operation, value);
     const result = await client.call(operation, value as never, {
       signal,
       timeoutMs: 60000,

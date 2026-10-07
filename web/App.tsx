@@ -17,6 +17,7 @@ import {
   type MiniAppOperation,
 } from "@lo-ink/miniapp-sdk";
 import { cases, events, operationNames } from "./cases.ts";
+import { api, uploadFile } from "./api.ts";
 import { applyPalette } from "./theme.ts";
 import { SecretaryPage } from "./SecretaryPage.tsx";
 import { UiPage } from "./UiPage.tsx";
@@ -46,6 +47,7 @@ import { systemThemeChecks } from "./system-theme.ts";
 import { ActionConfirmation } from "./ActionConfirmation.tsx";
 import {
   applyDeferredResult,
+  canRunDeferred,
   createDeferredTicket,
   createDeliveryCheck,
   deferredIdentity,
@@ -57,7 +59,15 @@ import {
   type DeferredTicket,
 } from "./deferred.ts";
 
-import { dependencyKey, readRun, saveRun, sameOwner } from "./run-storage.ts";
+import { recoverRun, recoveryPending } from "./recovery.ts";
+import {
+  dependencyKey,
+  readRun,
+  readRecovery,
+  saveRun,
+  sameOwner,
+  type RecoveryTicket,
+} from "./run-storage.ts";
 const dependencies = dependencyKey(sdkBuild.packages);
 
 type Result = {
@@ -88,36 +98,6 @@ function display(value: unknown, operation = ""): string {
     ) ?? ""
   );
 }
-async function api<T>(
-  path: string,
-  body?: unknown,
-  signal?: AbortSignal,
-): Promise<T> {
-  const response = await fetch(`/api/${path}`, {
-    credentials: "same-origin",
-    signal,
-    ...(body === undefined
-      ? {}
-      : {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-sdk-test": "1" },
-          body: JSON.stringify(body),
-        }),
-  });
-  const result = await response.json();
-  if (!response.ok) {
-    const pause = Number.isFinite(result.retryAfterSec)
-      ? `; пауза ${result.retryAfterSec} с`
-      : "";
-    throw Object.assign(
-      new Error(
-        `${result.message ?? `Ошибка ${response.status}`}${result.code ? ` (${result.code}${pause})` : ""}`,
-      ),
-      { code: result.code, reason: result.reason, status: response.status },
-    );
-  }
-  return result as T;
-}
 export function App() {
   const [client, setClient] = useState<MiniAppClient | null>(null);
   const clientRef = useRef(client);
@@ -142,6 +122,7 @@ export function App() {
     caution: string;
   } | null>(null);
   const [input, setInput] = useState("");
+  const [inputError, setInputError] = useState("");
   const [eventValues, setEventValues] = useState<Record<string, string>>({});
   const [insets, setInsets] = useState("Нет данных LO");
   const [exporting, setExporting] = useState(false);
@@ -151,10 +132,17 @@ export function App() {
   const mounted = useRef(true);
   const audio = useRef<AudioContext | null>(null);
   const dialog = useRef<HTMLDialogElement>(null);
+  const parameterInput = useRef<HTMLTextAreaElement>(null);
   const reportDialog = useRef<HTMLDialogElement>(null);
   const [automatedRun, setAutomatedRun] = useState<RunReport | null>(() =>
     readRun(localStorage, dependencies),
   );
+  const [pendingRecovery, setPendingRecovery] = useState<RecoveryTicket | null>(
+    () => readRecovery(localStorage, dependencies),
+  );
+  const pendingRecoveryRef = useRef(pendingRecovery);
+  pendingRecoveryRef.current = pendingRecovery;
+  const [recovering, setRecovering] = useState(false);
   const automatedRunRef = useRef(automatedRun);
   automatedRunRef.current = automatedRun;
   const includeBot = true;
@@ -296,6 +284,13 @@ export function App() {
       );
       return;
     }
+    if (!canRunDeferred(automatedRun, id, identity)) {
+      dispose();
+      setExportMessage(
+        "Нужен завершённый прогон текущего пользователя с успешным восстановлением состояния.",
+      );
+      return;
+    }
     // A repeat of a pending sendData checks its original nonce, never resends it.
     const pending = readDeferredTicket(
       localStorage,
@@ -379,7 +374,8 @@ export function App() {
         dispose();
       });
   };
-  const runningAll = startingRun || automatedRun?.state === "running";
+  const runningAll =
+    recovering || startingRun || automatedRun?.state === "running";
   const manualTab = useRef("Приложение LO");
   const section =
     tab === "Все проверки" ? "checks" : tab === "UI" ? "ui" : "manual";
@@ -399,6 +395,54 @@ export function App() {
     disabled: runningAll,
     onChange: selectSection,
   });
+  const restorePrevious = async () => {
+    const ticket = pendingRecoveryRef.current;
+    if (
+      !ticket ||
+      runController.current ||
+      deferredBusy.current ||
+      interaction ||
+      controllers.current.size
+    )
+      return;
+    const controller = new AbortController();
+    runController.current = controller;
+    setRecovering(true);
+    setExportMessage("");
+    const bridges = availableBridges();
+    try {
+      const remaining = await recoverRun(
+        ticket,
+        bridges,
+        localStorage,
+        controller.signal,
+        (update) => {
+          pendingRecoveryRef.current = update;
+          if (mounted.current) setPendingRecovery(update);
+        },
+      );
+      if (!recoveryPending(remaining)) {
+        pendingRecoveryRef.current = null;
+        if (mounted.current) {
+          setPendingRecovery(null);
+          setExportMessage(
+            "Прежние тестовые данные удалены, состояние восстановлено. Запустите новую проверку текущих SDK.",
+          );
+        }
+      }
+    } catch (error) {
+      if (mounted.current)
+        setExportMessage(
+          error instanceof Error
+            ? error.message
+            : "Не удалось завершить восстановление",
+        );
+    } finally {
+      for (const bridge of bridges) bridge.client?.dispose();
+      runController.current = null;
+      if (mounted.current) setRecovering(false);
+    }
+  };
   const startAll = async (resume = false) => {
     if (
       runController.current ||
@@ -408,6 +452,12 @@ export function App() {
       Object.values(results).some((r) => r.state === "running")
     )
       return;
+    if (pendingRecoveryRef.current) {
+      setExportMessage(
+        "Сначала восстановите состояние прежнего прогона. Его результаты не относятся к текущим SDK.",
+      );
+      return;
+    }
     if (!resume && hasRecoveryDebt(automatedRunRef.current)) {
       setExportMessage(
         "Сначала восстановите состояние прежнего прогона кнопкой продолжения. Новый запуск не должен потерять незавершённую очистку.",
@@ -480,6 +530,7 @@ export function App() {
       }
     const common = {
       api,
+      upload: uploadFile,
       consent: null,
       includeBot,
       interact,
@@ -639,6 +690,11 @@ export function App() {
         throw new Error(
           "Набор проверок изменился. Сохранённый отчёт доступен; начните новый прогон.",
         );
+      try {
+        audio.current ??= new AudioContext();
+      } catch {
+        // Preserve the normal unavailable result when Web Audio cannot start.
+      }
       resolveAudio(beginAudio(audio.current));
       if (writeAccess && runClient)
         resolveWrite(beginWriteAccess(runClient, controller.signal));
@@ -768,7 +824,7 @@ export function App() {
       );
       // Theme events remain observable during colour tests; only our automatic
       // writeback must stop, otherwise it would overwrite the bridge under test.
-      if (testingAppearance.current) return;
+      if (testingAppearance.current || pendingRecoveryRef.current) return;
       // LO owns the area below the WebView, including the home indicator.
       // Match it to the page so the document doesn't end at a white strip.
       const pageColor =
@@ -802,23 +858,26 @@ export function App() {
       }
     };
     appearance();
-    try {
-      audio.current = new AudioContext();
-      void audio.current
-        .resume()
-        .then(() => {
+    if (!pendingRecoveryRef.current) {
+      try {
+        audio.current = new AudioContext();
+        void audio.current
+          .resume()
+          .then(() => {
+            if (mounted.current)
+              setAudioState(audio.current?.state ?? "closed");
+          })
+          .catch(() => {
+            if (mounted.current)
+              setAudioState("Заблокирован; повторите касанием");
+          });
+        const audioTimer = setTimeout(() => {
           if (mounted.current) setAudioState(audio.current?.state ?? "closed");
-        })
-        .catch(() => {
-          if (mounted.current)
-            setAudioState("Заблокирован; повторите касанием");
-        });
-      const audioTimer = setTimeout(() => {
-        if (mounted.current) setAudioState(audio.current?.state ?? "closed");
-      }, 500);
-      releases.push(() => clearTimeout(audioTimer));
-    } catch {
-      setAudioState("Web Audio недоступен");
+        }, 500);
+        releases.push(() => clearTimeout(audioTimer));
+      } catch {
+        setAudioState("Web Audio недоступен");
+      }
     }
     const media = matchMedia("(prefers-color-scheme: dark)");
     media.addEventListener("change", appearance);
@@ -973,25 +1032,13 @@ export function App() {
       },
     }));
     try {
-      // File bytes are encoded in bounded chunks to avoid call-stack overflow.
-      let data: string | undefined;
-      if (
+      const result =
         file &&
         ["sendPhoto", "sendDocument", "sendVoice", "sendVideo"].includes(
           operation,
         )
-      ) {
-        if (file.size > 50 << 20) throw new Error("Файл превышает 50 МиБ");
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        let binary = "";
-        for (let i = 0; i < bytes.length; i += 8192)
-          binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-        data = btoa(binary);
-      }
-      const result = await api("bot", {
-        operation,
-        ...(data ? { file: { data, name: file!.name, mime: file!.type } } : {}),
-      });
+          ? await uploadFile(operation, file)
+          : await api("bot", { operation });
       complete(`bot:${operation}`, result);
     } catch (error) {
       complete(
@@ -1021,7 +1068,7 @@ export function App() {
     }
   };
   const exportReport = async () => {
-    if (exporting) return;
+    if (exporting || pendingRecoveryRef.current) return;
     const report = {
       createdAt: new Date().toISOString(),
       appVersion,
@@ -1189,6 +1236,9 @@ export function App() {
         {tab === "Все проверки" && (
           <RunPage
             report={automatedRun}
+            pendingRecovery={pendingRecovery}
+            recovering={recovering}
+            onRecover={() => void restorePrevious()}
             interaction={interaction}
             starting={startingRun}
             stopping={stoppingRun}
@@ -1203,6 +1253,7 @@ export function App() {
             }}
             onExport={() => void exportReport()}
             onDeferred={runDeferred}
+            identity={client ? deferredIdentity(client) : null}
           />
         )}
         {tab === "Данные запуска" && (
@@ -1365,6 +1416,7 @@ export function App() {
                             aria-label={`Параметры ${definition.label}`}
                             onClick={() => {
                               setSelected(name);
+                              setInputError("");
                               setInput(
                                 definition.input === undefined
                                   ? ""
@@ -1746,8 +1798,13 @@ export function App() {
             <TextArea
               label="Параметры JSON; пусто для вызова без параметров"
               id="params"
+              ref={parameterInput}
               value={input}
-              onChange={(event) => setInput(event.target.value)}
+              error={inputError || undefined}
+              onChange={(event) => {
+                setInput(event.target.value);
+                setInputError("");
+              }}
               autoFocus
               rows={8}
             />
@@ -1764,7 +1821,10 @@ export function App() {
                     setSelected(null);
                     void run(name, parsed);
                   } catch {
-                    complete(selected, "Некорректный JSON", "failed");
+                    setInputError(
+                      "Некорректный JSON. Исправьте параметры и повторите запуск.",
+                    );
+                    parameterInput.current?.focus();
                   }
                 }}
               >

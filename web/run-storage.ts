@@ -1,5 +1,8 @@
 import {
   recoveryOperations,
+  recoveryButtons,
+  hasRecoveryDebt,
+  type Recovery,
   type CheckResult,
   type RunReport,
 } from "./runner.ts";
@@ -69,6 +72,18 @@ function validRecovery(value: unknown, runId: string): boolean {
       !object(entry.original)
     )
       return false;
+    if (
+      entry.buttons !== undefined &&
+      (!Array.isArray(entry.buttons) ||
+        !entry.buttons.length ||
+        entry.buttons.length > 4 ||
+        new Set(entry.buttons).size !== entry.buttons.length ||
+        !entry.buttons.every((button) =>
+          (recoveryButtons as readonly unknown[]).includes(button),
+        ) ||
+        !entry.mutations.includes("setButton"))
+    )
+      return false;
     const original = entry.original;
     if (
       Object.keys(original).some(
@@ -99,23 +114,31 @@ function validRecovery(value: unknown, runId: string): boolean {
     return true;
   });
 }
-export function readRun(
+function readStoredRun(
   storage: Storage,
   dependencies: string,
-  now = Date.now(),
+  now: number,
+  allowStale: boolean,
 ): RunReport | null {
   try {
     const raw = storage.getItem(lastRunKey);
     if (!raw || raw.length > 2000000) return null;
     const saved: unknown = JSON.parse(raw);
     if (!object(saved) || !object(saved.report)) return null;
-    if (saved.schema !== 1 || saved.dependencies !== dependencies) return null;
+    if (
+      saved.schema !== 1 ||
+      !text(saved.dependencies, 20000) ||
+      !saved.dependencies ||
+      (!allowStale && saved.dependencies !== dependencies)
+    )
+      return null;
     const report = saved.report;
     if (
       !text(report.id, 36) ||
       !uuid.test(report.id) ||
       !text(report.startedAt, 100) ||
-      !["running", "finished", "cancelled"].includes(String(report.state)) ||
+      typeof report.state !== "string" ||
+      !["running", "finished", "cancelled"].includes(report.state) ||
       !Array.isArray(report.checks) ||
       !report.checks.length ||
       report.checks.length > 1000 ||
@@ -132,7 +155,8 @@ export function readRun(
     )
       return null;
     const age = now - Date.parse(report.startedAt);
-    if (!Number.isFinite(age) || age < 0 || age > 86400000) return null;
+    if (!Number.isFinite(age) || age < 0 || (!allowStale && age > 86400000))
+      return null;
     if (
       report.owner !== undefined &&
       (!object(report.owner) ||
@@ -148,6 +172,7 @@ export function readRun(
     )
       return null;
     const restored = report as RunReport;
+    if (allowStale) return restored;
     if (restored.state === "running") {
       restored.state = "cancelled";
       for (const check of restored.checks) {
@@ -176,6 +201,70 @@ export function readRun(
     return null;
   }
 }
+export function readRun(
+  storage: Storage,
+  dependencies: string,
+  now = Date.now(),
+): RunReport | null {
+  return readStoredRun(storage, dependencies, now, false);
+}
+
+/** Cleanup intent survives evidence expiry, without exposing old check results. */
+export type RecoveryTicket = {
+  snapshot: string;
+  id: string;
+  owner: NonNullable<RunReport["owner"]>;
+  startedAt: string;
+  recovery: Record<string, Recovery>;
+};
+export function readRecovery(
+  storage: Storage,
+  dependencies: string,
+  now = Date.now(),
+): RecoveryTicket | null {
+  try {
+    const snapshot = storage.getItem(lastRunKey);
+    if (!snapshot) return null;
+    const source = { getItem: () => snapshot, setItem: () => {} };
+    if (readStoredRun(source, dependencies, now, false)) return null;
+    const report = readStoredRun(source, dependencies, now, true);
+    if (!report?.owner || !report.recovery || !hasRecoveryDebt(report))
+      return null;
+    return {
+      snapshot,
+      id: report.id,
+      owner: report.owner,
+      startedAt: report.startedAt,
+      recovery: report.recovery,
+    };
+  } catch {
+    return null;
+  }
+}
+export function assertRecoveryCurrent(
+  storage: Storage,
+  ticket: RecoveryTicket,
+) {
+  if (storage.getItem(lastRunKey) !== ticket.snapshot)
+    throw new Error(
+      "Сохранённый прогон изменился. Откройте приложение заново перед восстановлением.",
+    );
+}
+export function saveRecovery(
+  storage: Storage,
+  ticket: RecoveryTicket,
+  recovery: Record<string, Recovery>,
+): RecoveryTicket {
+  if (!validRecovery(recovery, ticket.id))
+    throw new Error("Недопустимые данные восстановления");
+  assertRecoveryCurrent(storage, ticket);
+  const saved = JSON.parse(ticket.snapshot);
+  saved.report.recovery = recovery;
+  const snapshot = JSON.stringify(saved);
+  storage.setItem(lastRunKey, snapshot);
+  return { ...ticket, recovery, snapshot };
+}
+
 export function saveRun(
   storage: Storage,
   report: RunReport,
@@ -188,7 +277,7 @@ export function saveRun(
   );
 }
 export function sameOwner(
-  report: RunReport,
+  report: Pick<RunReport, "owner">,
   owner: RunReport["owner"],
 ): boolean {
   return (

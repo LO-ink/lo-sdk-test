@@ -10,7 +10,8 @@ import {
   type RunReport,
 } from "./runner.ts";
 import { RunInteraction } from "./RunInteraction.tsx";
-import { canVerifyDelivery, isDeferredCheck } from "./deferred.ts";
+import { canRunDeferred, type DeferredIdentity } from "./deferred.ts";
+import type { RecoveryTicket } from "./run-storage.ts";
 import type { InteractionView } from "./interaction.ts";
 const labels = {
   pending: "Ожидает",
@@ -85,7 +86,14 @@ export function RunPage({
   onStop,
   onExport,
   onDeferred,
+  identity = null,
+  pendingRecovery = null,
+  recovering = false,
+  onRecover,
 }: {
+  pendingRecovery?: RecoveryTicket | null;
+  recovering?: boolean;
+  onRecover?: () => void;
   report: RunReport | null;
   interaction: InteractionView | null;
   starting: boolean;
@@ -97,6 +105,7 @@ export function RunPage({
   onStop: () => void;
   onExport: () => void;
   onDeferred: (id: string) => void;
+  identity?: DeferredIdentity | null;
 }) {
   const [filter, setFilter] = useState<keyof typeof filters>("Ошибки");
   const resumable = canResume(report) && Boolean(onResume);
@@ -109,17 +118,39 @@ export function RunPage({
   const confirmed = coverage.reduce((sum, item) => sum + item.confirmed, 0);
   const bridgeTotal = coverage.reduce((sum, item) => sum + item.total, 0);
   const deferredChecks =
-    report?.checks.filter(
-      (check) =>
-        check.state === "manual" &&
-        isDeferredCheck(check.id) &&
-        (check.id !== "bot:delivery" || canVerifyDelivery(report)),
+    report?.checks.filter((check) =>
+      canRunDeferred(report, check.id, identity),
     ) ?? [];
   const shown =
     report?.checks.filter(
       (c) => !filters[filter] || c.state === filters[filter],
     ) ?? [];
   const groups = [...new Set(shown.map((c) => c.group))];
+  if (pendingRecovery)
+    return (
+      <section
+        className="run-panel"
+        aria-label="Восстановление прежнего прогона"
+      >
+        <Heading level={2}>Завершите восстановление</Heading>
+        <Text tone="secondary" size="label">
+          Прежний прогон относится к другим версиям SDK или старше суток. Его
+          результаты не используются. Сначала удалим оставленные тестовые ключи
+          и восстановим изменённые настройки; новая проверка станет доступна
+          после очистки.
+        </Text>
+        <Text tone="secondary" size="caption">
+          Откройте прежний аккаунт и приложение LO. Недоступные ресурсы
+          останутся в списке восстановления до успешной очистки.
+        </Text>
+        <Button
+          disabled={recovering || Boolean(interaction) || !onRecover}
+          onClick={onRecover}
+        >
+          {recovering ? "Восстанавливаем…" : "Восстановить прежний прогон"}
+        </Button>
+      </section>
+    );
   return (
     <>
       <section className="run-panel" aria-label="Запуск проверки">
@@ -391,7 +422,7 @@ export function RunPage({
                         <Text tone="secondary" size="label">
                           {check.detail}
                         </Text>
-                        {check.state === "manual" &&
+                        {canRunDeferred(report, check.id, identity) &&
                           /:(close|sendData)$/.test(check.id) && (
                             <Button
                               variant="secondary"

@@ -553,7 +553,7 @@ test("audio start evidence is captured before LO's later permission deactivation
 });
 
 test("all supported SDK methods are runnable in the same guided flow; only closing actions are deferred", () => {
-  const adapter = client(async () => true);
+  const adapter = client(async () => true, { isFullscreen: false });
   const plan = suite(adapter, {
     interact: async () => ({ decision: "skip" }),
   }).plan;
@@ -1024,4 +1024,63 @@ test("late baseline ACK after timeout cannot apply the next flag mutation after 
   release();
   await tick();
   assert.equal(values.includes(true), false);
+});
+
+test("automated sample media use the raw upload contract with the run's cancellation signal", async () => {
+  const { uploadFile } = await import("../web/api.ts");
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const operation of [
+      "sendPhoto",
+      "sendDocument",
+      "sendVoice",
+      "sendVideo",
+    ]) {
+      const currentSignal = signal();
+      let uploaded = false;
+      globalThis.fetch = async (url, options) => {
+        if (String(url).startsWith("/api/bot/upload?")) {
+          const parsed = new URL(String(url), "https://fixture.invalid");
+          assert.equal(parsed.searchParams.get("operation"), operation);
+          assert.equal(options?.signal, currentSignal);
+          assert.ok(options?.body instanceof File);
+          assert.deepEqual(
+            [...new Uint8Array(await options.body.arrayBuffer())],
+            [0, 255, 65],
+          );
+          uploaded = true;
+          return Response.json({ mode: "live", result: { fileId: "fixture" } });
+        }
+        return new Response(new Uint8Array([0, 255, 65]));
+      };
+      const checks = suite(
+        client(async () => true),
+        {
+          includeBot: true,
+          writeAccess: Promise.resolve({ allowed: true }),
+          upload: uploadFile,
+          api: async (path: string) => {
+            assert.notEqual(
+              path,
+              "bot",
+              "Media bytes must not be sent in control JSON",
+            );
+            return { appConfigured: true, botConfigured: true, verified: true };
+          },
+        },
+      );
+      for (const id of [
+        "server",
+        "signature",
+        "requestWriteAccess",
+        `bot:${operation}`,
+      ])
+        await checks.plan
+          .find((check) => check.id === id)!
+          .execute(currentSignal);
+      assert.equal(uploaded, true);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

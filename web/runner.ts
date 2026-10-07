@@ -32,15 +32,23 @@ export const recoveryOperations = [
   "updateBiometryToken",
   "openQrScanner",
   "requestFullscreen",
+  "exitFullscreen",
   "setHeaderColor",
   "setBackgroundColor",
   "setBottomBarColor",
   "setButton",
 ] as const;
+export const recoveryButtons = [
+  "main",
+  "secondary",
+  "back",
+  "settings",
+] as const;
 export type Recovery = {
   key: string;
   written: string[];
   mutations: string[];
+  buttons?: (typeof recoveryButtons)[number][];
   original: {
     isOrientationLocked?: boolean;
     isFullscreen?: boolean;

@@ -334,9 +334,15 @@ test.describe("native touch arbitration", () => {
   test("horizontal filters scroll while content swipes switch sections and vertical gestures scroll", async ({
     page,
   }) => {
-    await page.route("**/api/**", (route) =>
-      route.fulfill({ status: 503, json: {} }),
-    );
+    let releaseStatus!: () => void;
+    const statusResponse = new Promise<void>((resolve) => {
+      releaseStatus = resolve;
+    });
+    await page.route("**/api/**", async (route) => {
+      if (new URL(route.request().url()).pathname === "/api/status")
+        await statusResponse;
+      await route.fulfill({ status: 503, json: {} });
+    });
     await page.goto("/");
     await page.getByRole("tab", { name: "Вручную", exact: true }).click();
     const session = await page.context().newCDPSession(page);
@@ -366,6 +372,20 @@ test.describe("native touch arbitration", () => {
     await expect(
       page.getByRole("tab", { name: "Вручную", exact: true }),
     ).toHaveAttribute("aria-selected", "true");
+    // A late server result rerenders App with equivalent inline tab options.
+    // It must not reclaim the scroll position chosen by the touch gesture.
+    const response = page.waitForResponse("**/api/status");
+    releaseStatus();
+    await (await response).finished();
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    expect(
+      await filters.evaluate((element) => element.scrollLeft),
+    ).toBeGreaterThan(50);
     const heading = (await page
       .locator("#sdk-panel .section-heading")
       .boundingBox())!;

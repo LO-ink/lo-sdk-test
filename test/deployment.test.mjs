@@ -20,9 +20,20 @@ const source = readFileSync(
   "utf8",
 );
 
-function run({ scenario = "success", command = request } = {}) {
+function run({
+  scenario = "success",
+  command = request,
+  previousReceipt,
+  failReceipt = false,
+} = {}) {
   const root = mkdtempSync(join(tmpdir(), "lo-sdk-deployment-test-"));
   try {
+    if (previousReceipt !== undefined)
+      writeFileSync(
+        join(root, "current-release.json"),
+        JSON.stringify(previousReceipt),
+      );
+    if (failReceipt) mkdirSync(join(root, "current-release.json.next"));
     const bin = join(root, "bin");
     mkdirSync(bin);
     const log = join(root, "calls.jsonl");
@@ -84,7 +95,11 @@ if (tool === "git") {
       );
     } catch {}
     const switches = calls.filter((x) => x.switchTo).map((x) => x.switchTo);
-    return { ...result, calls, switches, receipt };
+    let environment;
+    try {
+      environment = readFileSync(join(root, "deployment.env"), "utf8");
+    } catch {}
+    return { ...result, calls, switches, receipt, environment };
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -138,4 +153,33 @@ test("successful deployment records the exact digest and revision; identical rel
   const retry = run({ scenario: "already-deployed" });
   assert.equal(retry.status, 0, retry.stderr);
   assert.deepEqual(retry.switches, []);
+  assert.equal(retry.receipt.image, image);
+  assert.equal(retry.receipt.revision, revision);
+  assert.equal(retry.environment, `SDK_TEST_IMAGE=${image}\n`);
+});
+test("healthy retries repair stale receipts while preserving the original successful timestamp", () => {
+  const deployedAt = "2026-10-06T00:00:00+00:00";
+  const preserved = run({
+    scenario: "already-deployed",
+    previousReceipt: { image, revision, deployedAt },
+  });
+  assert.equal(preserved.status, 0, preserved.stderr);
+  assert.deepEqual(preserved.receipt, { image, revision, deployedAt });
+  for (const previousReceipt of [
+    { image: "old-image", revision: "c".repeat(40), deployedAt },
+    "invalid",
+  ]) {
+    const repaired = run({ scenario: "already-deployed", previousReceipt });
+    assert.equal(repaired.status, 0, repaired.stderr);
+    assert.equal(repaired.receipt.image, image);
+    assert.equal(repaired.receipt.revision, revision);
+    assert.notEqual(repaired.receipt.deployedAt, deployedAt);
+    assert.deepEqual(repaired.switches, []);
+  }
+});
+test("receipt failure on a healthy retry does not report success or replace the container", () => {
+  const failed = run({ scenario: "already-deployed", failReceipt: true });
+  assert.notEqual(failed.status, 0);
+  assert.deepEqual(failed.switches, []);
+  assert.equal(failed.receipt, undefined);
 });
