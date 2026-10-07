@@ -52,20 +52,31 @@ verify_public() {
   [[ "$public_revision" == "$revision" ]]
 }
 record_release() {
-printf 'SDK_TEST_IMAGE=%s\n' "$image" > deployment.env.next
-mv deployment.env.next deployment.env
-python3 - "$image" "$revision" <<'PY'
-import sys,json,datetime,os
+  printf 'SDK_TEST_IMAGE=%s\n' "$image" > deployment.env.next
+  mv deployment.env.next deployment.env
+  python3 - "$image" "$revision" <<'PY'
+import datetime
+import json
+import os
+import sys
+
 deployed_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
 try:
- with open('current-release.json') as f: previous = json.load(f)
- if previous.get('image') == sys.argv[1] and previous.get('revision') == sys.argv[2] and isinstance(previous.get('deployedAt'), str):
-  deployed_at = previous['deployedAt']
+    with open('current-release.json') as source:
+        previous = json.load(source)
+    if (previous.get('image') == sys.argv[1]
+            and previous.get('revision') == sys.argv[2]
+            and isinstance(previous.get('deployedAt'), str)):
+        deployed_at = previous['deployedAt']
 except (OSError, ValueError, AttributeError):
- pass
-with open('current-release.json.next','w') as f:
- json.dump({'image':sys.argv[1],'revision':sys.argv[2],'deployedAt':deployed_at},f)
-os.replace('current-release.json.next','current-release.json')
+    pass
+with open('current-release.json.next', 'w') as destination:
+    json.dump({
+        'image': sys.argv[1],
+        'revision': sys.argv[2],
+        'deployedAt': deployed_at,
+    }, destination)
+os.replace('current-release.json.next', 'current-release.json')
 PY
 }
 if [[ "$previous_image" == "$image" && $(docker inspect --format '{{.State.Health.Status}}' "$current") == healthy ]] && verify_public; then
