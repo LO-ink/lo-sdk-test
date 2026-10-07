@@ -1057,7 +1057,7 @@ test("automated sample media use the raw upload contract with the run's cancella
         client(async () => true),
         {
           includeBot: true,
-          writeAccess: Promise.resolve({ allowed: true }),
+          writeAccess: () => Promise.resolve({ allowed: true }),
           upload: uploadFile,
           api: async (path: string) => {
             assert.notEqual(

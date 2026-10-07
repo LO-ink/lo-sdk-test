@@ -308,10 +308,13 @@ test("one run verifies the signature and persists LO consent before any bot writ
       } as unknown as MiniAppClient,
       consent: null,
       includeBot: true,
-      writeAccess: Promise.resolve({
-        allowed: mode !== "denied",
-        ...(mode === "permission-error" ? { error: "permission failed" } : {}),
-      }),
+      writeAccess: () =>
+        Promise.resolve({
+          allowed: mode !== "denied",
+          ...(mode === "permission-error"
+            ? { error: "permission failed" }
+            : {}),
+        }),
       consentChanged: (allowed) => calls.push(`consent:${allowed}`),
       verified: () => calls.push("verified"),
       observed: () => ({}),

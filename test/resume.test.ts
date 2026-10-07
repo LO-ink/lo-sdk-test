@@ -198,6 +198,17 @@ test("stored runs require bounded valid metadata, current dependencies, owned ke
     report: RunReport;
   };
   const invalid = [
+    { ...saved, report: { ...before, assistedBridge: ["native"] } },
+    {
+      ...saved,
+      report: {
+        ...before,
+        checks: before.checks.map((check) => ({
+          ...check,
+          phase: ["automatic"],
+        })),
+      },
+    },
     { ...saved, schema: 2 },
     { ...saved, dependencies: "different" },
     {
@@ -313,7 +324,7 @@ function suiteFixture(
     includeBot: true,
     verified: () => {},
     observed: () => ({}),
-    writeAccess: Promise.resolve({ allowed: true }),
+    writeAccess: () => Promise.resolve({ allowed: true }),
     checkpoint: () => checkpoints.push(JSON.stringify(suite.checkpoint())),
   });
   return { suite, calls, checkpoints, values };
@@ -372,7 +383,7 @@ test("expired bot resources remain unverified, and interrupted sends require a s
     resumeChecks: [interrupted],
     consent: null,
     includeBot: true,
-    writeAccess: Promise.resolve({ allowed: true }),
+    writeAccess: () => Promise.resolve({ allowed: true }),
     verified: () => {},
     observed: () => ({}),
     api: async <T>(path: string) => {

@@ -1,7 +1,11 @@
 import type { MiniAppClient } from "@lo-ink/miniapp-sdk";
 import { bounded } from "./runner.ts";
 
-export type WriteAccessResult = { allowed: boolean; error?: string };
+export type WriteAccessResult = {
+  allowed: boolean;
+  error?: string;
+  skipped?: boolean;
+};
 
 // Start inside the click handler so LO receives the user's gesture. Settle errors
 // immediately; the suite consumes this result after verifying the launch data.

@@ -14,7 +14,9 @@ for (const scheme of ["light", "dark"] as const) {
       page.getByRole("button", { name: "Начать проверку" }),
     ).toBeVisible();
     await expect(
-      page.getByText("Автоматические шаги и действия с вашим подтверждением."),
+      page.getByText(
+        "Сначала автоматические проверки, затем действия с вашим подтверждением.",
+      ),
     ).toBeVisible();
     await page.evaluate(async () => {
       const reactPath = "/node_modules/.vite/deps/react.js";
