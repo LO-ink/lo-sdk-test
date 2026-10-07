@@ -44,7 +44,7 @@ export type SuiteContext = {
   ) => Promise<T>;
   consent: boolean | null;
   includeBot: boolean;
-  writeAccess?: Promise<WriteAccessResult>;
+  writeAccess?: (signal: AbortSignal) => Promise<WriteAccessResult>;
   consentChanged?: (allowed: boolean) => void;
   verified: () => void;
   observed: () => Record<string, string>;
@@ -66,6 +66,7 @@ export function createSuite(context: SuiteContext) {
   const value = "SDK Test roundtrip";
   let signed = false;
   let consent = context.consent;
+  let consentAttempted = false;
   let botReady = false;
   const written = new Set<string>();
   const removed = new Set<string>();
@@ -212,6 +213,7 @@ export function createSuite(context: SuiteContext) {
   );
   plan.push({
     id: "requestWriteAccess",
+    phase: "assisted",
     label: "Разрешение на сообщения бота",
     group: "Приложение LO",
     evidence: "data",
@@ -234,19 +236,24 @@ export function createSuite(context: SuiteContext) {
       if (!context.writeAccess)
         return {
           state: "manual",
-          detail:
-            "Нажмите «Запустить все проверки», чтобы запросить разрешение в LO",
+          detail: "Запрос разрешения через LO недоступен",
         };
       return undefined;
     },
     execute: async (signal) => {
       assert(context.writeAccess, "Запрос разрешения через мост не выполнен");
-      const result = await context.writeAccess!;
+      consentAttempted = true;
+      const result = await context.writeAccess!(signal);
       signal.throwIfAborted();
       if (result.error) throw new Error(result.error);
       context.consentChanged?.(result.allowed);
       await context.api("consent", { allowed: result.allowed }, signal);
       consent = result.allowed;
+      if (result.skipped)
+        return {
+          state: "manual",
+          detail: "Разрешение на сообщения не проверено",
+        };
       assert(
         result.allowed,
         "Отправка сообщений не разрешена; проверки бота с отправкой будут пропущены",
@@ -607,7 +614,21 @@ export function createSuite(context: SuiteContext) {
     "downloadFile",
     "getUpdates",
   ];
-  for (const operation of botOperations)
+  const botReadOnly = new Set([
+    "getIdentity",
+    "getCapabilities",
+    "getCommands",
+    "getFile",
+    "downloadFile",
+  ]);
+  for (const operation of botOperations) {
+    const assistedRetry = Boolean(
+      context.resumeChecks &&
+      ((!botReadOnly.has(operation) && context.writeAccess) ||
+        context.resumeChecks.some(
+          (check) => check.id === `bot:${operation}` && check.interrupted,
+        )),
+    );
     plan.push({
       id: `bot:${operation}`,
       label: (
@@ -661,7 +682,14 @@ export function createSuite(context: SuiteContext) {
             "getFile",
             "downloadFile",
           ].includes(operation) &&
-          (!context.includeBot || consent !== true)
+          (!context.includeBot ||
+            (consent !== true &&
+              !(
+                consent === null &&
+                !consentAttempted &&
+                context.resumeChecks &&
+                context.writeAccess
+              )))
         )
           return {
             state: "skipped",
@@ -700,16 +728,51 @@ export function createSuite(context: SuiteContext) {
           };
         return undefined;
       },
-      timeoutMs: ["setCommands", "getUpdates"].includes(operation)
-        ? 180000
-        : operation === "sendVideo"
-          ? 95000
+      timeoutMs: assistedRetry
+        ? operation === "sendVideo"
+          ? 275000
+          : 180000
+        : ["setCommands", "getUpdates"].includes(operation)
+          ? 180000
+          : operation === "sendVideo"
+            ? 95000
+            : undefined,
+      timeoutState:
+        assistedRetry || ["setCommands", "getUpdates"].includes(operation)
+          ? "manual"
           : undefined,
-      timeoutState: ["setCommands", "getUpdates"].includes(operation)
-        ? "manual"
-        : undefined,
       evidence: "response",
       execute: async (signal) => {
+        if (
+          consent === null &&
+          !consentAttempted &&
+          context.resumeChecks &&
+          context.writeAccess &&
+          ![
+            "getIdentity",
+            "getCapabilities",
+            "getCommands",
+            "getFile",
+            "downloadFile",
+          ].includes(operation)
+        ) {
+          const permission = plan.find(
+            (check) => check.id === "requestWriteAccess",
+          )!;
+          const unavailable = permission.skip?.();
+          if (unavailable) return unavailable;
+          const authorization = await permission.execute(signal);
+          if (
+            typeof authorization !== "string" &&
+            authorization.state !== "passed"
+          )
+            return authorization;
+          if (consent !== true)
+            return {
+              state: "skipped",
+              detail: "Отправка сообщений не разрешена",
+            };
+        }
         let file: File | undefined;
         if (
           ["sendPhoto", "sendDocument", "sendVoice", "sendVideo"].includes(
@@ -841,6 +904,7 @@ export function createSuite(context: SuiteContext) {
         return "Живой API LO подтвердил операцию; доставка на устройство оценивается вручную";
       },
     });
+  }
   for (const event of events)
     plan.push({
       id: `event:${event}`,
@@ -1087,9 +1151,6 @@ export function createSuite(context: SuiteContext) {
         passed.add(`${storage}Set`);
       }
     }
-    const permission = plan.find((check) => check.id === "requestWriteAccess")!;
-    if (context.primary !== false && !permission.skip?.())
-      await bounded(permission.execute, signal, 60000);
   };
   return { plan, cleanup, checkpoint, prepareResume };
 }

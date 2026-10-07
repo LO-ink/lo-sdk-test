@@ -1,3 +1,5 @@
+export type AssistedBridge = "native" | "compat";
+export type RunPhase = "automatic" | "assisted" | "observation" | "deferred";
 export type CheckState =
   | "pending"
   | "running"
@@ -14,6 +16,8 @@ export type CheckResult = {
   detail: string;
   durationMs: number;
   interrupted?: boolean;
+  phase?: RunPhase;
+  scopeExcluded?: boolean;
   bridge?: string;
   evidence?: "response" | "data" | "device" | "synthetic";
 };
@@ -67,12 +71,15 @@ export type RunReport = {
   state: "running" | "finished" | "cancelled";
   checks: CheckResult[];
   suiteRevision?: 1;
+  assistedBridge?: AssistedBridge;
   recovery?: Record<string, Recovery>;
   resumeBlocked?: boolean;
   resumeError?: string;
 };
 export type Check = Pick<CheckResult, "id" | "label" | "group"> & {
   bridge?: string;
+  phase?: RunPhase;
+  scopeExcluded?: boolean;
   evidence?: CheckResult["evidence"];
   timeoutMs?: number;
   timeoutState?: "manual";
@@ -138,16 +145,19 @@ export function canResume(report: RunReport | null): report is RunReport {
   );
 }
 export function matchesPlan(report: RunReport, plan: Check[]): boolean {
+  const expected = new Map(plan.map((check) => [check.id, check]));
   return (
     report.checks.length === plan.length &&
-    new Set(plan.map((check) => check.id)).size === plan.length &&
-    report.checks.every((check, index) => {
-      const expected = plan[index];
+    expected.size === plan.length &&
+    new Set(report.checks.map((check) => check.id)).size ===
+      report.checks.length &&
+    report.checks.every((check) => {
+      const target = expected.get(check.id);
       return (
-        check.id === expected.id &&
-        check.label === expected.label &&
-        check.group === expected.group &&
-        check.bridge === expected.bridge
+        target &&
+        check.label === target.label &&
+        check.group === target.group &&
+        check.bridge === target.bridge
       );
     })
   );
@@ -212,6 +222,7 @@ export async function runChecks(
   timeoutMs = 12000,
   options: {
     previous?: RunReport;
+    assistedBridge?: AssistedBridge;
     id?: string;
     prepare?: (signal: AbortSignal) => Promise<void>;
   } = {},
@@ -224,22 +235,26 @@ export async function runChecks(
     throw new Error(
       "Сохранённый прогон не подходит для продолжения. Запустите новую проверку.",
     );
+  const savedById = new Map(previous?.checks.map((check) => [check.id, check]));
   const report: RunReport = {
     id: previous?.id ?? options.id ?? crypto.randomUUID(),
     owner: previous?.owner,
+    assistedBridge: previous?.assistedBridge ?? options.assistedBridge,
     startedAt: previous?.startedAt ?? new Date().toISOString(),
     suiteRevision: 1,
     state: "running",
-    checks: [...plan, cleanup].map((c, index) => {
-      const saved = previous?.checks[index];
+    checks: [...plan, cleanup].map((c) => {
+      const saved = savedById.get(c.id);
       if (saved && c.id !== cleanup.id && !unfinished(saved))
-        return { ...saved };
+        return { ...saved, ...(c.phase ? { phase: c.phase } : {}) };
       return {
         id: c.id,
         label: c.label,
         group: c.group,
         bridge: c.bridge,
         evidence: c.evidence,
+        phase: c.phase,
+        scopeExcluded: c.scopeExcluded,
         state: "pending",
         detail: "Ещё не запускалась",
         durationMs: 0,

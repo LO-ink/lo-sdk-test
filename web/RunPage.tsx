@@ -1,4 +1,12 @@
-import { Button, Heading, Text, Progress, Surface, Stack } from "@lo-ink/ui";
+import {
+  Tabs,
+  Button,
+  Heading,
+  Text,
+  Progress,
+  Surface,
+  Stack,
+} from "@lo-ink/ui";
 import { useState } from "react";
 import { SdkVersions } from "./SdkVersions.tsx";
 import {
@@ -6,6 +14,7 @@ import {
   canResume,
   hasRecoveryDebt,
   summarize,
+  type AssistedBridge,
   type CheckResult,
   type RunReport,
 } from "./runner.ts";
@@ -98,6 +107,9 @@ function RunFeed({ checks }: { checks: CheckResult[] }) {
 }
 export function RunPage({
   report,
+  assistedBridge = "native",
+  onBridgeChange,
+  availableBridgeIds = [],
   interaction,
   starting,
   stopping,
@@ -117,6 +129,9 @@ export function RunPage({
   recovering?: boolean;
   onRecover?: () => void;
   report: RunReport | null;
+  assistedBridge?: AssistedBridge;
+  onBridgeChange?: (bridge: AssistedBridge) => void;
+  availableBridgeIds?: AssistedBridge[];
   interaction: InteractionView | null;
   starting: boolean;
   stopping: boolean;
@@ -137,7 +152,9 @@ export function RunPage({
     report?.checks.findIndex((check) => check.state === "running") ?? -1;
   const current = currentIndex >= 0 ? report?.checks[currentIndex] : undefined;
   const startedChecks =
-    report?.checks.filter((check) => check.state !== "pending") ?? [];
+    report?.checks.filter(
+      (check) => check.state !== "pending" && !check.scopeExcluded,
+    ) ?? [];
   const feedChecks = startedChecks
     .filter((check) => check.state !== "running")
     .reverse();
@@ -185,6 +202,41 @@ export function RunPage({
     <>
       <section className="run-panel" aria-label="Запуск проверки">
         <Stack gap={4}>
+          {onBridgeChange && !active && !resumable && (
+            <Stack gap={2}>
+              <Text size="label">Мост для проверок с вашим участием</Text>
+              <Tabs
+                aria-label="Мост интерактивных проверок"
+                value={assistedBridge}
+                onValueChange={(value) =>
+                  onBridgeChange(value as AssistedBridge)
+                }
+                options={[
+                  {
+                    value: "native",
+                    label: "Нативный",
+                    disabled: !availableBridgeIds.includes("native"),
+                  },
+                  {
+                    value: "compat",
+                    label: "Совместимый",
+                    disabled: !availableBridgeIds.includes("compat"),
+                  },
+                ]}
+              />
+            </Stack>
+          )}
+          {onBridgeChange && (
+            <Text tone="secondary" size="caption">
+              Автоматически — оба моста. С вашим участием —{" "}
+              {((active || resumable) && report?.assistedBridge
+                ? report.assistedBridge
+                : assistedBridge) === "compat"
+                ? "совместимый"
+                : "нативный"}{" "}
+              мост.
+            </Text>
+          )}
           <Button
             className="run-start"
             disabled={stopping || (!active && Boolean(interaction))}
@@ -202,7 +254,8 @@ export function RunPage({
           </Button>
           {!active && !resumable && (
             <Text tone="secondary" size="caption">
-              Автоматические шаги и действия с вашим подтверждением.
+              Сначала автоматические проверки, затем действия с вашим
+              подтверждением.
             </Text>
           )}
           {resumable && !active && (
@@ -236,6 +289,15 @@ export function RunPage({
               {resumable
                 ? "Восстановление после остановки не подтверждено. При продолжении сначала повторим очистку; готовые результаты останутся."
                 : "Восстановление после остановки не подтверждено. Продолжение недоступно; заново откройте приложение в LO и начните новый прогон."}
+            </Text>
+          )}
+          {active && current?.phase && (
+            <Text size="label" tone="secondary" role="status">
+              {current.phase === "automatic"
+                ? "Автоматические проверки"
+                : current.phase === "assisted"
+                  ? "Проверки с вашим участием"
+                  : "Итоги и восстановление"}
             </Text>
           )}
           {active && summary && (
@@ -372,6 +434,16 @@ export function RunPage({
             </div>
             <Stack gap={4}>
               <Stack gap={2}>
+                {report?.assistedBridge && (
+                  <Text tone="secondary" size="caption">
+                    С вашим участием проверялся{" "}
+                    {report.assistedBridge === "native"
+                      ? "нативный"
+                      : "совместимый"}{" "}
+                    мост. Невыполненные интерактивные сценарии другого моста
+                    остаются непроверенными.
+                  </Text>
+                )}
                 <Text tone="secondary" size="caption">
                   Пропуски и непроверенные эффекты снижают покрытие.
                   Синтетические тесты и ответы API без подтверждения эффекта его

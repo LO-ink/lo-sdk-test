@@ -48,6 +48,13 @@ function validCheck(value: unknown): value is CheckResult {
     (value.bridge === undefined || text(value.bridge, 500)) &&
     (value.evidence === undefined ||
       (typeof value.evidence === "string" && evidence.has(value.evidence))) &&
+    (value.scopeExcluded === undefined ||
+      typeof value.scopeExcluded === "boolean") &&
+    (value.phase === undefined ||
+      (typeof value.phase === "string" &&
+        ["automatic", "assisted", "observation", "deferred"].includes(
+          value.phase,
+        ))) &&
     (value.interrupted === undefined || typeof value.interrupted === "boolean")
   );
 }
@@ -151,6 +158,9 @@ function readStoredRun(
       (report.resumeBlocked !== undefined &&
         typeof report.resumeBlocked !== "boolean") ||
       (report.resumeError !== undefined && !text(report.resumeError, 20000)) ||
+      (report.assistedBridge !== undefined &&
+        (typeof report.assistedBridge !== "string" ||
+          !["native", "compat"].includes(report.assistedBridge))) ||
       (report.suiteRevision !== undefined && report.suiteRevision !== 1)
     )
       return null;

@@ -32,9 +32,11 @@ import {
   bridgeCoverage,
   runChecks,
   summarize,
+  type AssistedBridge,
   type Check,
   type RunReport,
 } from "./runner.ts";
+import { orderRunPlan } from "./run-plan.ts";
 import { createSuite } from "./suite.ts";
 import { beginWriteAccess, type WriteAccessResult } from "./consent.ts";
 import sdkBuild from "../sdk-build.json";
@@ -102,6 +104,11 @@ export function App() {
   const [client, setClient] = useState<MiniAppClient | null>(null);
   const clientRef = useRef(client);
   clientRef.current = client;
+  const [assistedBridge, setAssistedBridge] =
+    useState<AssistedBridge>("native");
+  const [availableBridgeIds, setAvailableBridgeIds] = useState<
+    AssistedBridge[]
+  >([]);
   const [tab, setTab] = useState("Все проверки");
   const [themePreference, setThemePreference] =
     useState<ThemePreference>("host");
@@ -475,12 +482,14 @@ export function App() {
     const previous = resume ? automatedRunRef.current : null;
     if (resume && !canResume(previous)) return;
     const bridges = availableBridges();
-    const primary = bridges.find((bridge) => bridge.client) ?? bridges[0];
+    const selectedBridge = previous?.assistedBridge ?? assistedBridge;
+    const primary = bridges.find((bridge) => bridge.id === selectedBridge)!;
     const runClient = primary.client;
     const runOwner = runClient
       ? (deferredIdentity(runClient) ?? undefined)
       : undefined;
     if (previous && !sameOwner(previous, runOwner)) {
+      for (const bridge of bridges) bridge.client?.dispose();
       setExportMessage(
         "Этот прогон относится к другому пользователю или приложению. Откройте его в прежнем аккаунте LO либо начните новый.",
       );
@@ -502,22 +511,28 @@ export function App() {
     const audioStarted = new Promise<AudioStart>((resolve) => {
       resolveAudio = resolve;
     });
-    let resolveWrite!: (
-      value: WriteAccessResult | PromiseLike<WriteAccessResult>,
-    ) => void;
-    const writeAccess =
-      includeBot &&
-      configuration?.botConfigured !== false &&
-      runClient?.supports("requestWriteAccess")
-        ? new Promise<WriteAccessResult>((resolve) => {
-            resolveWrite = resolve;
-          })
-        : undefined;
     setStartingRun(true);
     setStoppingRun(false);
     const interact = createInteraction((view) => {
       if (mounted.current) setInteraction(view);
     });
+    const writeAccess = runClient?.supports("requestWriteAccess")
+      ? async (signal: AbortSignal): Promise<WriteAccessResult> => {
+          const answer = await interact(
+            {
+              title: "Разрешение на сообщения бота",
+              detail:
+                "Теперь начнутся проверки с вашим участием. Разрешите тестовому боту отправку сообщений и файлов.",
+              actionLabel: "Запросить разрешение",
+              action: () => beginWriteAccess(runClient, signal),
+            },
+            signal,
+          );
+          return answer.decision === "skip"
+            ? { allowed: false, skipped: true }
+            : (answer.value as WriteAccessResult);
+        }
+      : undefined;
     const subscriptions: Array<() => void> = [];
     const observed = new Map(
       bridges.map((bridge) => [bridge.id, {} as Record<string, string>]),
@@ -574,7 +589,7 @@ export function App() {
     };
     let latestReport: RunReport | null = null;
     const themes = systemThemeChecks(bridges, interact);
-    const plan: Check[] = [];
+    const unsortedPlan: Check[] = [];
     const cleanups: Check[] = [];
     const suites = new Map<string, ReturnType<typeof createSuite>>();
     const publishReport = (update: RunReport) => {
@@ -655,7 +670,7 @@ export function App() {
               signal,
             );
         }
-        plan.push({
+        unsortedPlan.push({
           ...check,
           id: host || event ? `${bridge.id}:${check.id}` : check.id,
           bridge: host || event ? bridge.label : undefined,
@@ -663,7 +678,7 @@ export function App() {
             host || event ? `${bridge.label} · ${check.group}` : check.group,
         });
         if (bridge === primary && check.id === "audio-playback")
-          plan.push(...themes);
+          unsortedPlan.push(...themes);
       }
       cleanups.push({
         ...suite.cleanup,
@@ -671,7 +686,8 @@ export function App() {
         label: `${bridge.label}: восстановление`,
       });
     }
-    if (includeBot) plan.push(createDeliveryCheck(() => latestReport));
+    if (includeBot) unsortedPlan.push(createDeliveryCheck(() => latestReport));
+    const plan = orderRunPlan(unsortedPlan, previous?.checks, selectedBridge);
     const cleanup: Check = {
       id: "cleanup",
       label: "Восстановление после прогона",
@@ -704,10 +720,10 @@ export function App() {
         // Preserve the normal unavailable result when Web Audio cannot start.
       }
       resolveAudio(beginAudio(audio.current));
-      if (writeAccess && runClient)
-        resolveWrite(beginWriteAccess(runClient, controller.signal));
+
       await runChecks(plan, cleanup, controller.signal, publishReport, 12000, {
         id: runId,
+        assistedBridge: selectedBridge,
         ...(previous
           ? {
               previous,
@@ -803,6 +819,15 @@ export function App() {
   useEffect(() => {
     mounted.current = true;
     const releases: Array<() => void> = [];
+    const detected = availableBridges();
+    const ids = detected
+      .filter((bridge) => bridge.client)
+      .map((bridge) => bridge.id as AssistedBridge);
+    setAvailableBridgeIds(ids);
+    const savedBridge = automatedRunRef.current?.assistedBridge;
+    if (savedBridge) setAssistedBridge(savedBridge);
+    else if (ids[0]) setAssistedBridge(ids[0]);
+    for (const bridge of detected) bridge.client?.dispose();
     const next = createLoClient();
     setClient(next);
     let frameColor = "";
@@ -1249,6 +1274,9 @@ export function App() {
         {tab === "Все проверки" && (
           <RunPage
             report={automatedRun}
+            assistedBridge={assistedBridge}
+            onBridgeChange={setAssistedBridge}
+            availableBridgeIds={availableBridgeIds}
             pendingRecovery={pendingRecovery}
             recovering={recovering}
             onRecover={() => void restorePrevious()}

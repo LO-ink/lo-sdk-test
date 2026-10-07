@@ -73,11 +73,15 @@ export function canRunDeferred(
     !hasRecoveryDebt(report) &&
     !report.checks.some(unfinished) &&
     isDeferredCheck(id) &&
+    (!report.assistedBridge ||
+      id.startsWith("bot:") ||
+      id.startsWith(`${report.assistedBridge}:`)) &&
     report.checks.some(
       (check) => check.id === "cleanup" && check.state === "passed",
     ) &&
     report.checks.some(
-      (check) => check.id === id && check.state === "manual",
+      (check) =>
+        check.id === id && check.state === "manual" && !check.scopeExcluded,
     ) &&
     (id !== "bot:delivery" || deliverySendsPassed(report)),
   );
