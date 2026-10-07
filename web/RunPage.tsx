@@ -11,6 +11,7 @@ import {
 } from "./runner.ts";
 import { RunInteraction } from "./RunInteraction.tsx";
 import { canRunDeferred, type DeferredIdentity } from "./deferred.ts";
+import type { RecoveryTicket } from "./run-storage.ts";
 import type { InteractionView } from "./interaction.ts";
 const labels = {
   pending: "Ожидает",
@@ -86,7 +87,13 @@ export function RunPage({
   onExport,
   onDeferred,
   identity = null,
+  pendingRecovery = null,
+  recovering = false,
+  onRecover,
 }: {
+  pendingRecovery?: RecoveryTicket | null;
+  recovering?: boolean;
+  onRecover?: () => void;
   report: RunReport | null;
   interaction: InteractionView | null;
   starting: boolean;
@@ -119,6 +126,31 @@ export function RunPage({
       (c) => !filters[filter] || c.state === filters[filter],
     ) ?? [];
   const groups = [...new Set(shown.map((c) => c.group))];
+  if (pendingRecovery)
+    return (
+      <section
+        className="run-panel"
+        aria-label="Восстановление прежнего прогона"
+      >
+        <Heading level={2}>Завершите восстановление</Heading>
+        <Text tone="secondary" size="label">
+          Прежний прогон относится к другим версиям SDK или старше суток. Его
+          результаты не используются. Сначала удалим оставленные тестовые ключи
+          и восстановим изменённые настройки; новая проверка станет доступна
+          после очистки.
+        </Text>
+        <Text tone="secondary" size="caption">
+          Откройте прежний аккаунт и приложение LO. Недоступные ресурсы
+          останутся в списке восстановления до успешной очистки.
+        </Text>
+        <Button
+          disabled={recovering || Boolean(interaction) || !onRecover}
+          onClick={onRecover}
+        >
+          {recovering ? "Восстанавливаем…" : "Восстановить прежний прогон"}
+        </Button>
+      </section>
+    );
   return (
     <>
       <section className="run-panel" aria-label="Запуск проверки">

@@ -1154,3 +1154,220 @@ test("media requests send the original File as raw bytes and retain server error
     },
   );
 });
+
+test("stale owned runs expose cleanup only, retain partial debt on reopen, and require a fresh suite afterward", async () => {
+  const runId = "11111111-1111-4111-8111-111111111111";
+  const key = `lo-sdk-run-${runId}-native`;
+  const calls: string[] = [];
+  const posts: string[] = [];
+  const listeners = new Set<(raw: string) => void>();
+  const values = new Map([
+    ["deviceStorage", "fixture"],
+    ["secureStorage", "fixture"],
+  ]);
+  let audioCalls = 0;
+  const originalAudio = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "AudioContext",
+  );
+  Object.defineProperty(globalThis, "AudioContext", {
+    configurable: true,
+    value: class {
+      constructor() {
+        audioCalls++;
+      }
+      resume() {
+        audioCalls++;
+        return Promise.resolve();
+      }
+      close() {
+        return Promise.resolve();
+      }
+    },
+  });
+  let failSecure = true;
+  let userId = "foreign";
+  Object.assign(globalThis, {
+    LO: {
+      MiniAppNative: {
+        protocolVersion: 1,
+        get generation() {
+          return `old-run:${userId}`;
+        },
+        operations: [
+          "deviceStorageRemove",
+          "secureStorageRemove",
+          "setBackgroundColor",
+          "setBottomBarColor",
+        ],
+        capabilities: [
+          "deviceStorage",
+          "secureStorage",
+          "backgroundColor",
+          "bottomBarColor",
+        ],
+        get launchData() {
+          return new URLSearchParams({
+            app_id: "demo",
+            user: JSON.stringify({ id: userId }),
+            auth_date: String(Math.floor(Date.now() / 1000)),
+          }).toString();
+        },
+        snapshot: () => ({ colorScheme: "light" }),
+        subscribe: (listener: (raw: string) => void) => {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+        postMessage: (raw: string) => {
+          const message = JSON.parse(raw);
+          if (message.kind !== "request") return;
+          calls.push(message.operation);
+          assert.equal(message.input.key, key);
+          const accepted =
+            message.operation !== "secureStorageRemove" || !failSecure;
+          if (accepted) values.delete(message.operation.replace("Remove", ""));
+          for (const listener of listeners)
+            listener(
+              JSON.stringify({
+                channel: "lo.miniapp",
+                version: 1,
+                get generation() {
+                  return `old-run:${userId}`;
+                },
+                kind: "result",
+                id: message.id,
+                ok: true,
+                value: accepted,
+              }),
+            );
+        },
+      },
+    },
+  });
+  const saved = {
+    schema: 1,
+    appVersion: "0.4.28",
+    dependencies: "old-sdk-versions",
+    report: {
+      id: runId,
+      owner: { appId: "demo", userId: "42" },
+      startedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+      state: "cancelled",
+      suiteRevision: 1,
+      checks: [
+        {
+          id: "old:proof",
+          label: "Stale successful check",
+          group: "fixture",
+          state: "passed",
+          detail: "Old evidence",
+          durationMs: 1,
+        },
+        {
+          id: "cleanup",
+          label: "cleanup",
+          group: "fixture",
+          state: "failed",
+          detail: "Interrupted cleanup",
+          durationMs: 1,
+        },
+      ],
+      recovery: {
+        native: {
+          key,
+          written: ["deviceStorage", "secureStorage"],
+          mutations: [],
+          original: {},
+        },
+      },
+    },
+  };
+  localStorage.setItem("sdk-test.last-run", JSON.stringify(saved));
+  globalThis.fetch = async (input, options) => {
+    if (options?.method === "POST") posts.push(String(input));
+    return String(input).endsWith("/status")
+      ? Response.json({ appConfigured: true, botConfigured: true })
+      : Response.json({}, { status: 503 });
+  };
+  try {
+    let page = render(<App />);
+    assert.ok(
+      page.getByRole("button", { name: "Восстановить прежний прогон" }),
+    );
+    for (const name of [
+      "Продолжить проверку",
+      "Проверить все мосты",
+      "Начать заново",
+      "Скачать отчёт",
+    ])
+      assert.equal(page.queryByRole("button", { name }), null);
+    assert.equal(page.queryByText("Stale successful check"), null);
+    fireEvent.click(
+      page.getByRole("button", { name: "Восстановить прежний прогон" }),
+    );
+    await waitFor(() =>
+      assert.ok(page.getByText(/Восстановление доступно только/)),
+    );
+    assert.deepEqual(calls, []);
+    assert.equal(
+      localStorage.getItem("sdk-test.last-run"),
+      JSON.stringify(saved),
+    );
+    page.unmount();
+    userId = "42";
+    const scope = globalThis as unknown as { LO: { MiniAppNative: object } };
+    scope.LO.MiniAppNative = { ...scope.LO.MiniAppNative };
+    page = render(<App />);
+    fireEvent.click(
+      page.getByRole("button", { name: "Восстановить прежний прогон" }),
+    );
+    await waitFor(() =>
+      assert.ok(page.getByText(/Не удалось очистить secureStorage/)),
+    );
+    const partial = JSON.parse(localStorage.getItem("sdk-test.last-run")!);
+    assert.deepEqual(partial.report.recovery.native.written, ["secureStorage"]);
+    assert.equal(partial.dependencies, "old-sdk-versions");
+    assert.deepEqual(partial.report.checks, saved.report.checks);
+    page.unmount();
+    failSecure = false;
+    page = render(<App />);
+    fireEvent.click(
+      page.getByRole("button", { name: "Восстановить прежний прогон" }),
+    );
+    await waitFor(() =>
+      assert.ok(page.getByRole("button", { name: "Проверить все мосты" })),
+    );
+    assert.equal(
+      page.queryByRole("button", { name: "Продолжить проверку" }),
+      null,
+    );
+    assert.equal(page.queryByRole("button", { name: "Скачать отчёт" }), null);
+    assert.equal(page.queryByText("Stale successful check"), null);
+    assert.deepEqual(calls, [
+      "deviceStorageRemove",
+      "secureStorageRemove",
+      "secureStorageRemove",
+    ]);
+    assert.deepEqual(posts, []);
+    assert.equal(audioCalls, 0);
+    assert.equal(values.size, 0);
+    fireEvent.click(page.getByRole("button", { name: "Проверить все мосты" }));
+    assert.equal(audioCalls, 2);
+    fireEvent.click(page.getByRole("button", { name: "Остановить проверку" }));
+    await waitFor(() =>
+      assert.ok(page.getByRole("button", { name: "Продолжить проверку" })),
+    );
+    assert.notEqual(
+      JSON.parse(localStorage.getItem("sdk-test.last-run")!).report.id,
+      runId,
+    );
+  } finally {
+    cleanup();
+    Reflect.deleteProperty(globalThis, "LO");
+    if (originalAudio)
+      Object.defineProperty(globalThis, "AudioContext", originalAudio);
+    else Reflect.deleteProperty(globalThis, "AudioContext");
+  }
+});

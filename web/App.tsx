@@ -59,7 +59,15 @@ import {
   type DeferredTicket,
 } from "./deferred.ts";
 
-import { dependencyKey, readRun, saveRun, sameOwner } from "./run-storage.ts";
+import { recoverRun, recoveryPending } from "./recovery.ts";
+import {
+  dependencyKey,
+  readRun,
+  readRecovery,
+  saveRun,
+  sameOwner,
+  type RecoveryTicket,
+} from "./run-storage.ts";
 const dependencies = dependencyKey(sdkBuild.packages);
 
 type Result = {
@@ -129,6 +137,12 @@ export function App() {
   const [automatedRun, setAutomatedRun] = useState<RunReport | null>(() =>
     readRun(localStorage, dependencies),
   );
+  const [pendingRecovery, setPendingRecovery] = useState<RecoveryTicket | null>(
+    () => readRecovery(localStorage, dependencies),
+  );
+  const pendingRecoveryRef = useRef(pendingRecovery);
+  pendingRecoveryRef.current = pendingRecovery;
+  const [recovering, setRecovering] = useState(false);
   const automatedRunRef = useRef(automatedRun);
   automatedRunRef.current = automatedRun;
   const includeBot = true;
@@ -360,7 +374,8 @@ export function App() {
         dispose();
       });
   };
-  const runningAll = startingRun || automatedRun?.state === "running";
+  const runningAll =
+    recovering || startingRun || automatedRun?.state === "running";
   const manualTab = useRef("Приложение LO");
   const section =
     tab === "Все проверки" ? "checks" : tab === "UI" ? "ui" : "manual";
@@ -380,6 +395,54 @@ export function App() {
     disabled: runningAll,
     onChange: selectSection,
   });
+  const restorePrevious = async () => {
+    const ticket = pendingRecoveryRef.current;
+    if (
+      !ticket ||
+      runController.current ||
+      deferredBusy.current ||
+      interaction ||
+      controllers.current.size
+    )
+      return;
+    const controller = new AbortController();
+    runController.current = controller;
+    setRecovering(true);
+    setExportMessage("");
+    const bridges = availableBridges();
+    try {
+      const remaining = await recoverRun(
+        ticket,
+        bridges,
+        localStorage,
+        controller.signal,
+        (update) => {
+          pendingRecoveryRef.current = update;
+          if (mounted.current) setPendingRecovery(update);
+        },
+      );
+      if (!recoveryPending(remaining)) {
+        pendingRecoveryRef.current = null;
+        if (mounted.current) {
+          setPendingRecovery(null);
+          setExportMessage(
+            "Прежние тестовые данные удалены, состояние восстановлено. Запустите новую проверку текущих SDK.",
+          );
+        }
+      }
+    } catch (error) {
+      if (mounted.current)
+        setExportMessage(
+          error instanceof Error
+            ? error.message
+            : "Не удалось завершить восстановление",
+        );
+    } finally {
+      for (const bridge of bridges) bridge.client?.dispose();
+      runController.current = null;
+      if (mounted.current) setRecovering(false);
+    }
+  };
   const startAll = async (resume = false) => {
     if (
       runController.current ||
@@ -389,6 +452,12 @@ export function App() {
       Object.values(results).some((r) => r.state === "running")
     )
       return;
+    if (pendingRecoveryRef.current) {
+      setExportMessage(
+        "Сначала восстановите состояние прежнего прогона. Его результаты не относятся к текущим SDK.",
+      );
+      return;
+    }
     if (!resume && hasRecoveryDebt(automatedRunRef.current)) {
       setExportMessage(
         "Сначала восстановите состояние прежнего прогона кнопкой продолжения. Новый запуск не должен потерять незавершённую очистку.",
@@ -621,6 +690,11 @@ export function App() {
         throw new Error(
           "Набор проверок изменился. Сохранённый отчёт доступен; начните новый прогон.",
         );
+      try {
+        audio.current ??= new AudioContext();
+      } catch {
+        // Preserve the normal unavailable result when Web Audio cannot start.
+      }
       resolveAudio(beginAudio(audio.current));
       if (writeAccess && runClient)
         resolveWrite(beginWriteAccess(runClient, controller.signal));
@@ -750,7 +824,7 @@ export function App() {
       );
       // Theme events remain observable during colour tests; only our automatic
       // writeback must stop, otherwise it would overwrite the bridge under test.
-      if (testingAppearance.current) return;
+      if (testingAppearance.current || pendingRecoveryRef.current) return;
       // LO owns the area below the WebView, including the home indicator.
       // Match it to the page so the document doesn't end at a white strip.
       const pageColor =
@@ -784,23 +858,26 @@ export function App() {
       }
     };
     appearance();
-    try {
-      audio.current = new AudioContext();
-      void audio.current
-        .resume()
-        .then(() => {
+    if (!pendingRecoveryRef.current) {
+      try {
+        audio.current = new AudioContext();
+        void audio.current
+          .resume()
+          .then(() => {
+            if (mounted.current)
+              setAudioState(audio.current?.state ?? "closed");
+          })
+          .catch(() => {
+            if (mounted.current)
+              setAudioState("Заблокирован; повторите касанием");
+          });
+        const audioTimer = setTimeout(() => {
           if (mounted.current) setAudioState(audio.current?.state ?? "closed");
-        })
-        .catch(() => {
-          if (mounted.current)
-            setAudioState("Заблокирован; повторите касанием");
-        });
-      const audioTimer = setTimeout(() => {
-        if (mounted.current) setAudioState(audio.current?.state ?? "closed");
-      }, 500);
-      releases.push(() => clearTimeout(audioTimer));
-    } catch {
-      setAudioState("Web Audio недоступен");
+        }, 500);
+        releases.push(() => clearTimeout(audioTimer));
+      } catch {
+        setAudioState("Web Audio недоступен");
+      }
     }
     const media = matchMedia("(prefers-color-scheme: dark)");
     media.addEventListener("change", appearance);
@@ -991,7 +1068,7 @@ export function App() {
     }
   };
   const exportReport = async () => {
-    if (exporting) return;
+    if (exporting || pendingRecoveryRef.current) return;
     const report = {
       createdAt: new Date().toISOString(),
       appVersion,
@@ -1159,6 +1236,9 @@ export function App() {
         {tab === "Все проверки" && (
           <RunPage
             report={automatedRun}
+            pendingRecovery={pendingRecovery}
+            recovering={recovering}
+            onRecover={() => void restorePrevious()}
             interaction={interaction}
             starting={startingRun}
             stopping={stoppingRun}
