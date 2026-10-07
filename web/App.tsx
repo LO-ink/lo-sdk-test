@@ -18,7 +18,7 @@ import {
 } from "@lo-ink/miniapp-sdk";
 import { cases, events, operationNames } from "./cases.ts";
 import { api, uploadFile } from "./api.ts";
-import { applyPalette } from "./theme.ts";
+import { applyPalette, type ThemePreference } from "./theme.ts";
 import { SecretaryPage } from "./SecretaryPage.tsx";
 import { UiPage } from "./UiPage.tsx";
 import { LaunchDetails } from "./LaunchDetails.tsx";
@@ -103,6 +103,14 @@ export function App() {
   const clientRef = useRef(client);
   clientRef.current = client;
   const [tab, setTab] = useState("Все проверки");
+  const [themePreference, setThemePreference] =
+    useState<ThemePreference>("host");
+  const themePreferenceRef = useRef(themePreference);
+  themePreferenceRef.current = themePreference;
+  const refreshAppearance = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    refreshAppearance.current?.();
+  }, [themePreference]);
   const [results, setResults] = useState<Record<string, Result>>({});
   const [log, setLog] = useState<Entry[]>([]);
   const [filter, setFilter] = useState("");
@@ -800,11 +808,12 @@ export function App() {
     let frameColor = "";
     const appearance = () => {
       const snapshot = next?.adapter.snapshot();
+      const preference = themePreferenceRef.current;
       const scheme =
-        snapshot?.colorScheme ??
+        (preference === "host" ? snapshot?.colorScheme : preference) ??
         (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
       document.documentElement.dataset.loTheme = scheme;
-      const colors = snapshot?.theme;
+      const colors = preference === "host" ? snapshot?.theme : undefined;
       const hostColor = (value: string | undefined) =>
         value && /^#[a-f0-9]{6}$/i.test(value) ? value : undefined;
       applyPalette(document.documentElement, "lo", scheme, {
@@ -857,6 +866,7 @@ export function App() {
             );
       }
     };
+    refreshAppearance.current = appearance;
     appearance();
     if (!pendingRecoveryRef.current) {
       try {
@@ -936,6 +946,7 @@ export function App() {
       );
     return () => {
       mounted.current = false;
+      refreshAppearance.current = null;
       runController.current?.abort();
       for (const controller of controllers.current.values()) controller.abort();
       for (const release of releases) release();
@@ -1229,7 +1240,9 @@ export function App() {
         aria-labelledby={`sdk-sections-tab-${["checks", "manual", "ui"].indexOf(section)}`}
         {...swipe}
       >
-        {tab === "UI" && <UiPage />}
+        {tab === "UI" && (
+          <UiPage theme={themePreference} onThemeChange={setThemePreference} />
+        )}
         {tab === "Секретарь" && (
           <SecretaryPage authenticated={authenticated} request={api} />
         )}

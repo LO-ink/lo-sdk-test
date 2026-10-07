@@ -46,6 +46,54 @@ for (const scheme of ["light", "dark"] as const) {
     }));
     for (const theme of ["Светлая", "Тёмная", "Как в LO"]) {
       await page.getByRole("button", { name: theme, exact: true }).click();
+      const expectedTheme =
+        theme === "Как в LO" ? scheme : theme === "Тёмная" ? "dark" : "light";
+      await expect(page.locator("html")).toHaveAttribute(
+        "data-lo-theme",
+        expectedTheme,
+      );
+      await page.emulateMedia({
+        colorScheme: scheme === "light" ? "dark" : "light",
+      });
+      await expect(page.locator("html")).toHaveAttribute(
+        "data-lo-theme",
+        theme === "Как в LO"
+          ? scheme === "light"
+            ? "dark"
+            : "light"
+          : expectedTheme,
+      );
+      await page.emulateMedia({ colorScheme: scheme });
+      await expect(page.locator("html")).toHaveAttribute(
+        "data-lo-theme",
+        expectedTheme,
+      );
+      const appearance = await page.evaluate(() => ({
+        page: getComputedStyle(document.body).backgroundColor,
+        header: getComputedStyle(document.querySelector("header h1")!).color,
+        catalog: getComputedStyle(document.querySelector(".ui-catalog")!).color,
+        nestedTheme: document
+          .querySelector(".ui-catalog")!
+          .hasAttribute("data-lo-theme"),
+      }));
+      expect(appearance.page).toBe(
+        expectedTheme === "dark" ? "rgb(11, 14, 23)" : "rgb(247, 251, 255)",
+      );
+      expect(appearance.header).toBe(appearance.catalog);
+      expect(appearance.nestedTheme).toBe(false);
+      await page.getByRole("tab", { name: "Вручную", exact: true }).click();
+      await expect(page.locator("html")).toHaveAttribute(
+        "data-lo-theme",
+        expectedTheme,
+      );
+      await page.getByRole("tab", { name: "UI", exact: true }).click();
+      await expect(
+        page.getByRole("button", { name: theme, exact: true }),
+      ).toHaveAttribute("aria-pressed", "true");
+      if (theme !== "Как в LO")
+        await page.screenshot({
+          path: `test-results/app-theme-${scheme}-${expectedTheme}.png`,
+        });
       const compact = page.getByRole("button", {
         name: "Маленькая",
         exact: true,

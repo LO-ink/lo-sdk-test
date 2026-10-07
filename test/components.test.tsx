@@ -525,7 +525,13 @@ test("the UI catalog covers all public primitives with local, isolated interacti
     throw new Error("Catalog must stay local");
   };
   const hostTheme = document.documentElement.dataset.loTheme;
-  const page = render(<UiPage />);
+  const selectedThemes: string[] = [];
+  const page = render(
+    <UiPage
+      theme="host"
+      onThemeChange={(theme) => selectedThemes.push(theme)}
+    />,
+  );
   for (const name of [
     "Button",
     "TextField",
@@ -549,11 +555,14 @@ test("the UI catalog covers all public primitives with local, isolated interacti
   const catalog = page
     .getByRole("heading", { name: "UI компоненты" })
     .closest(".ui-catalog") as HTMLElement;
-  assert.equal(catalog.dataset.loTheme, "dark");
+  assert.deepEqual(selectedThemes, ["dark"]);
+  assert.equal(catalog.dataset.loTheme, undefined);
   assert.equal(document.documentElement.dataset.loTheme, hostTheme);
   fireEvent.click(page.getByRole("button", { name: "Светлая" }));
-  assert.equal(catalog.dataset.loTheme, "light");
+  assert.deepEqual(selectedThemes, ["dark", "light"]);
+  assert.equal(catalog.dataset.loTheme, undefined);
   fireEvent.click(page.getByRole("button", { name: "Как в LO" }));
+  assert.deepEqual(selectedThemes, ["dark", "light", "host"]);
   assert.equal(catalog.dataset.loTheme, undefined);
   assert.equal(catalog.classList.contains("lo-ui-root"), false);
   for (const name of [

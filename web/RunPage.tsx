@@ -160,111 +160,116 @@ export function RunPage({
         className="run-panel"
         aria-label="Восстановление прежнего прогона"
       >
-        <Heading level={2}>Завершите восстановление</Heading>
-        <Text tone="secondary" size="label">
-          Прежний прогон относится к другим версиям SDK или старше суток. Его
-          результаты не используются. Сначала удалим оставленные тестовые ключи
-          и восстановим изменённые настройки; новая проверка станет доступна
-          после очистки.
-        </Text>
-        <Text tone="secondary" size="caption">
-          Откройте прежний аккаунт и приложение LO. Недоступные ресурсы
-          останутся в списке восстановления до успешной очистки.
-        </Text>
-        <Button
-          disabled={recovering || Boolean(interaction) || !onRecover}
-          onClick={onRecover}
-        >
-          {recovering ? "Восстанавливаем…" : "Восстановить прежний прогон"}
-        </Button>
+        <Stack gap={4}>
+          <Heading level={2}>Завершите восстановление</Heading>
+          <Text tone="secondary" size="label">
+            Прежний прогон относится к другим версиям SDK или старше суток. Его
+            результаты не используются. Сначала удалим оставленные тестовые
+            ключи и восстановим изменённые настройки; новая проверка станет
+            доступна после очистки.
+          </Text>
+          <Text tone="secondary" size="caption">
+            Откройте прежний аккаунт и приложение LO. Недоступные ресурсы
+            останутся в списке восстановления до успешной очистки.
+          </Text>
+          <Button
+            disabled={recovering || Boolean(interaction) || !onRecover}
+            onClick={onRecover}
+          >
+            {recovering ? "Восстанавливаем…" : "Восстановить прежний прогон"}
+          </Button>
+        </Stack>
       </section>
     );
   return (
     <>
       <section className="run-panel" aria-label="Запуск проверки">
-        <Button
-          className="run-start"
-          disabled={stopping || (!active && Boolean(interaction))}
-          onClick={active ? onStop : resumable ? onResume : onStart}
-        >
-          {stopping
-            ? "Останавливаем…"
-            : active
-              ? "Остановить проверку"
-              : resumable
-                ? "Продолжить проверку"
-                : report
-                  ? "Проверить снова"
-                  : "Начать проверку"}
-        </Button>
-        {!active && !resumable && (
-          <Text tone="secondary" size="caption" className="run-intro">
-            Автоматические шаги и действия с вашим подтверждением.
-          </Text>
-        )}
-        {resumable && !active && (
-          <>
-            <Text tone="secondary" size="caption">
-              Сохраним готовые результаты и продолжим незавершённые шаги. Для
-              прерванных действий снова потребуется подтверждение.
-            </Text>
-            <Button
-              variant="secondary"
-              disabled={Boolean(interaction) || hasRecoveryDebt(report)}
-              onClick={onStart}
-            >
-              Начать заново
-            </Button>
-          </>
-        )}
-        {report?.resumeError && !active && (
-          <Text
-            tone="danger"
-            size="caption"
-            role="status"
-            className="feed-error"
-          >
-            Не удалось продолжить: {report.resumeError}
-          </Text>
-        )}
-        {(report?.resumeBlocked || hasRecoveryDebt(report)) && !active && (
-          <Text tone="secondary" size="caption">
-            {resumable
-              ? "Восстановление после остановки не подтверждено. При продолжении сначала повторим очистку; готовые результаты останутся."
-              : "Восстановление после остановки не подтверждено. Продолжение недоступно; заново откройте приложение в LO и начните новый прогон."}
-          </Text>
-        )}
-        {active && summary && (
-          <>
-            <div className="run-progress-label">
-              <Text as="strong" weight="bold" size="title">
-                {summary.progress}%
-              </Text>
-              <Text as="span" size="caption">
-                {summary.processed} / {summary.total}
-              </Text>
-            </div>
-            <Progress
-              max={100}
-              value={summary.progress}
-              aria-label="Выполнение проверки"
-            />
-          </>
-        )}
-        {active && (stopping || (!current && !interaction)) && (
-          <Text
-            tone="secondary"
-            size="label"
-            className="run-current"
-            role="status"
+        <Stack gap={4}>
+          <Button
+            className="run-start"
+            disabled={stopping || (!active && Boolean(interaction))}
+            onClick={active ? onStop : resumable ? onResume : onStart}
           >
             {stopping
-              ? "Удаляем тестовые данные…"
-              : resuming
-                ? "Восстанавливаем подключение…"
-                : "Запускаем…"}
-          </Text>
-        )}
+              ? "Останавливаем…"
+              : active
+                ? "Остановить проверку"
+                : resumable
+                  ? "Продолжить проверку"
+                  : report
+                    ? "Проверить снова"
+                    : "Начать проверку"}
+          </Button>
+          {!active && !resumable && (
+            <Text tone="secondary" size="caption">
+              Автоматические шаги и действия с вашим подтверждением.
+            </Text>
+          )}
+          {resumable && !active && (
+            <>
+              <Text tone="secondary" size="caption">
+                Сохраним готовые результаты и продолжим незавершённые шаги. Для
+                прерванных действий снова потребуется подтверждение.
+              </Text>
+              <Button
+                variant="secondary"
+                className="run-secondary"
+                disabled={Boolean(interaction) || hasRecoveryDebt(report)}
+                onClick={onStart}
+              >
+                Начать заново
+              </Button>
+            </>
+          )}
+          {report?.resumeError && !active && (
+            <Text
+              tone="danger"
+              size="caption"
+              role="status"
+              className="feed-error"
+            >
+              Не удалось продолжить: {report.resumeError}
+            </Text>
+          )}
+          {(report?.resumeBlocked || hasRecoveryDebt(report)) && !active && (
+            <Text tone="secondary" size="caption">
+              {resumable
+                ? "Восстановление после остановки не подтверждено. При продолжении сначала повторим очистку; готовые результаты останутся."
+                : "Восстановление после остановки не подтверждено. Продолжение недоступно; заново откройте приложение в LO и начните новый прогон."}
+            </Text>
+          )}
+          {active && summary && (
+            <Stack gap={2}>
+              <div className="run-progress-label">
+                <Text as="strong" weight="bold" size="title">
+                  {summary.progress}%
+                </Text>
+                <Text as="span" size="caption">
+                  {summary.processed} / {summary.total}
+                </Text>
+              </div>
+              <Progress
+                max={100}
+                value={summary.progress}
+                aria-label="Выполнение проверки"
+              />
+            </Stack>
+          )}
+          {active && (stopping || (!current && !interaction)) && (
+            <Text
+              tone="secondary"
+              size="label"
+              className="run-current"
+              role="status"
+            >
+              {stopping
+                ? "Удаляем тестовые данные…"
+                : resuming
+                  ? "Восстанавливаем подключение…"
+                  : "Запускаем…"}
+            </Text>
+          )}
+        </Stack>
       </section>
       {interaction && (
         <RunInteraction
@@ -365,43 +370,55 @@ export function RunPage({
                 не проверено
               </Text>
             </div>
-            <Text tone="secondary" size="caption">
-              Пропуски и непроверенные эффекты снижают покрытие. Синтетические
-              тесты и ответы API без подтверждения эффекта его не повышают.
-            </Text>
-            {report?.state === "cancelled" && (
-              <Text tone="secondary" size="caption">
-                Обработано {summary.processed} из {summary.total} пунктов.
-              </Text>
-            )}
-            <Button variant="secondary" disabled={exporting} onClick={onExport}>
-              {exporting ? "Сохраняем…" : "Скачать отчёт"}
-            </Button>
+            <Stack gap={4}>
+              <Stack gap={2}>
+                <Text tone="secondary" size="caption">
+                  Пропуски и непроверенные эффекты снижают покрытие.
+                  Синтетические тесты и ответы API без подтверждения эффекта его
+                  не повышают.
+                </Text>
+                {report?.state === "cancelled" && (
+                  <Text tone="secondary" size="caption">
+                    Обработано {summary.processed} из {summary.total} пунктов.
+                  </Text>
+                )}
+              </Stack>
+              <Button
+                variant="secondary"
+                className="run-secondary"
+                disabled={exporting}
+                onClick={onExport}
+              >
+                {exporting ? "Сохраняем…" : "Скачать отчёт"}
+              </Button>
+            </Stack>
           </Surface>
           <Heading level={2} className="report-heading">
             Отчёт
           </Heading>
           {deferredChecks.length > 0 && (
             <Surface padding={0} className="group deferred-checks">
-              <Heading level={3}>Завершающие проверки</Heading>
-              <Text tone="secondary" size="caption">
-                Переход в чат и завершающие вызовы могут закрыть приложение.
-                После каждого заново откройте LO SDK Test: сохранённая попытка
-                продолжится. Доставку уже отправленных файлов и закрытие
-                подтвердите вручную; данные проверим у бота по уникальному коду.
-                Повторная кнопка продолжит незавершённую попытку без новой
-                отправки.
-              </Text>
-              {deferredChecks.map((check) => (
-                <Button
-                  key={check.id}
-                  variant="secondary"
-                  onClick={() => onDeferred(check.id)}
-                >
-                  {check.bridge ? `${check.bridge} · ` : ""}
-                  {check.label}
-                </Button>
-              ))}
+              <Stack gap={4}>
+                <Heading level={3}>Завершающие проверки</Heading>
+                <Text tone="secondary" size="caption">
+                  Переход в чат и завершающие вызовы могут закрыть приложение.
+                  После каждого заново откройте LO SDK Test: сохранённая попытка
+                  продолжится. Доставку уже отправленных файлов и закрытие
+                  подтвердите вручную; данные проверим у бота по уникальному
+                  коду. Повторная кнопка продолжит незавершённую попытку без
+                  новой отправки.
+                </Text>
+                {deferredChecks.map((check) => (
+                  <Button
+                    key={check.id}
+                    variant="secondary"
+                    onClick={() => onDeferred(check.id)}
+                  >
+                    {check.bridge ? `${check.bridge} · ` : ""}
+                    {check.label}
+                  </Button>
+                ))}
+              </Stack>
             </Surface>
           )}
           <div className="filters report-filters" aria-label="Фильтр отчёта">

@@ -7,6 +7,7 @@
  */
 export type Provider = "telegram" | "lo";
 export type Scheme = "light" | "dark";
+export type ThemePreference = "host" | Scheme;
 export type ThemeParams = Record<string, string | undefined>;
 
 const lo = {

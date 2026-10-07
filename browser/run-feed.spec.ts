@@ -164,3 +164,93 @@ for (const scheme of ["light", "dark"] as const) {
     ).toBe(320);
   });
 }
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`${scheme}: resumed runs separate explanatory text from actions`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 720 });
+    await page.emulateMedia({ colorScheme: scheme });
+    await page.route("**/api/**", (route) =>
+      route.fulfill({ status: 503, json: {} }),
+    );
+    await page.goto("/");
+    await expect(
+      page.getByRole("button", { name: "Начать проверку" }),
+    ).toBeVisible();
+    await page.evaluate(async () => {
+      const reactPath = "/node_modules/.vite/deps/react.js";
+      const domPath = "/node_modules/.vite/deps/react-dom_client.js";
+      const pagePath = "/web/RunPage.tsx";
+      const { default: React } = await import(/* @vite-ignore */ reactPath);
+      const { default: ReactDOM } = await import(/* @vite-ignore */ domPath);
+      const { RunPage } = await import(/* @vite-ignore */ pagePath);
+      document.querySelector<HTMLElement>(".app")!.hidden = true;
+      const host = document.createElement("div");
+      host.className = "app lo-ui-root";
+      document.body.append(host);
+      ReactDOM.createRoot(host).render(
+        React.createElement(RunPage, {
+          report: {
+            id: "spacing-fixture",
+            startedAt: new Date().toISOString(),
+            state: "cancelled",
+            checks: [
+              {
+                id: "server",
+                label: "Доступность сервера",
+                group: "Запуск",
+                state: "passed",
+                detail: "",
+                durationMs: 0,
+                evidence: "data",
+              },
+              {
+                id: "audio",
+                label: "Слышимость звука",
+                group: "Запуск",
+                state: "pending",
+                detail: "",
+                durationMs: 0,
+              },
+            ],
+          },
+          interaction: null,
+          starting: false,
+          stopping: false,
+          exporting: false,
+          onStart() {},
+          onResume() {},
+          onStop() {},
+          onExport() {},
+          onDeferred() {},
+        }),
+      );
+    });
+    const resume = page.getByRole("button", { name: "Продолжить проверку" });
+    await expect(resume).toBeVisible();
+    const note = page.getByText("Сохраним готовые результаты", {
+      exact: false,
+    });
+    const restart = page.getByRole("button", { name: "Начать заново" });
+    const exportButton = page.getByRole("button", { name: "Скачать отчёт" });
+    const processed = page.getByText("Обработано 1 из 2 пунктов.");
+    const gap = async (above: typeof note, below: typeof note) => {
+      const a = (await above.boundingBox())!,
+        b = (await below.boundingBox())!;
+      return b.y - a.y - a.height;
+    };
+    expect(await gap(resume, note)).toBe(16);
+    expect(await gap(note, restart)).toBe(16);
+    expect(await gap(processed, exportButton)).toBe(16);
+    expect((await restart.boundingBox())!.width).toBeLessThan(300);
+    expect((await exportButton.boundingBox())!.width).toBeLessThan(268);
+    await page.screenshot({
+      path: `test-results/run-spacing-${scheme}.png`,
+      fullPage: true,
+    });
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBe(320);
+  });
+}
