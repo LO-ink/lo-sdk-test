@@ -201,7 +201,7 @@ test("empty run shows an actionable start and leaves unavailable SDK versions un
       onDeferred={() => {}}
     />,
   );
-  fireEvent.click(page.getByRole("button", { name: "Проверить все мосты" }));
+  fireEvent.click(page.getByRole("button", { name: "Начать проверку" }));
   assert.equal(started, 1);
   await waitFor(() =>
     assert.ok(page.getByText("GitHub недоступен. Актуальность не проверена.")),
@@ -422,7 +422,7 @@ test("a stopped guided run reopens with Continue, preserves completed rows and c
       ? Response.json({ appConfigured: true, botConfigured: false })
       : Response.json({}, { status: 503 });
   let page = render(<App />);
-  fireEvent.click(page.getByRole("button", { name: "Проверить все мосты" }));
+  fireEvent.click(page.getByRole("button", { name: "Начать проверку" }));
   await waitFor(() => assert.ok(page.getByText("Звук")));
   fireEvent.click(page.getByRole("button", { name: "Остановить проверку" }));
   await waitFor(() =>
@@ -1298,7 +1298,7 @@ test("stale owned runs expose cleanup only, retain partial debt on reopen, and r
     );
     for (const name of [
       "Продолжить проверку",
-      "Проверить все мосты",
+      "Начать проверку",
       "Начать заново",
       "Скачать отчёт",
     ])
@@ -1337,7 +1337,7 @@ test("stale owned runs expose cleanup only, retain partial debt on reopen, and r
       page.getByRole("button", { name: "Восстановить прежний прогон" }),
     );
     await waitFor(() =>
-      assert.ok(page.getByRole("button", { name: "Проверить все мосты" })),
+      assert.ok(page.getByRole("button", { name: "Начать проверку" })),
     );
     assert.equal(
       page.queryByRole("button", { name: "Продолжить проверку" }),
@@ -1353,7 +1353,7 @@ test("stale owned runs expose cleanup only, retain partial debt on reopen, and r
     assert.deepEqual(posts, []);
     assert.equal(audioCalls, 0);
     assert.equal(values.size, 0);
-    fireEvent.click(page.getByRole("button", { name: "Проверить все мосты" }));
+    fireEvent.click(page.getByRole("button", { name: "Начать проверку" }));
     assert.equal(audioCalls, 2);
     fireEvent.click(page.getByRole("button", { name: "Остановить проверку" }));
     await waitFor(() =>
@@ -1370,4 +1370,74 @@ test("stale owned runs expose cleanup only, retain partial debt on reopen, and r
       Object.defineProperty(globalThis, "AudioContext", originalAudio);
     else Reflect.deleteProperty(globalThis, "AudioContext");
   }
+});
+
+test("run feed keeps the current step first and previous history disjoint without repeating interaction titles", () => {
+  versionsUnavailable();
+  const checks = Array.from({ length: 9 }, (_, index) => ({
+    id: String(index),
+    label: `Completed ${index}`,
+    group: "Run",
+    state: "passed" as const,
+    detail: "Done",
+    durationMs: 1,
+  }));
+  const report: RunReport = {
+    id: "feed-fixture",
+    state: "running",
+    startedAt: new Date().toISOString(),
+    checks: [
+      ...checks,
+      {
+        id: "current",
+        label: "Current action",
+        group: "Run",
+        state: "running",
+        detail: "",
+        durationMs: 0,
+      },
+    ],
+  };
+  const props = {
+    report,
+    interaction: null,
+    starting: false,
+    stopping: false,
+    exporting: false,
+    onStart() {},
+    onStop() {},
+    onExport() {},
+    onDeferred() {},
+  };
+  const page = render(<RunPage {...props} />);
+  const titles = [...page.container.querySelectorAll(".feed-title")].map(
+    (title) => title.textContent,
+  );
+  assert.deepEqual(titles, [
+    "Current action",
+    ...[...checks].reverse().map((check) => check.label),
+  ]);
+  assert.equal(page.getAllByText("Current action").length, 1);
+  assert.equal(new Set(titles).size, titles.length);
+  assert.ok(page.getByText("Предыдущие шаги · 3"));
+  page.rerender(
+    <RunPage
+      {...props}
+      interaction={{
+        title: "Current action",
+        detail: "Confirm the physical effect",
+        phase: "confirm",
+        attempt: 1,
+        start() {},
+        repeat() {},
+        answer() {},
+      }}
+    />,
+  );
+  assert.equal(page.getAllByText("Current action").length, 1);
+  assert.equal(
+    page.container.querySelector(".feed-title")?.textContent,
+    "Completed 8",
+  );
+  assert.ok(page.getByRole("heading", { name: "Current action" }));
 });

@@ -225,6 +225,16 @@ test("manual filters retain whole labels, field geometry and text/action gaps", 
   );
   await page.goto("/");
   await page.getByRole("tab", { name: "Вручную", exact: true }).click();
+  for (const button of await page
+    .locator("article .actions .lo-ui-button")
+    .all()) {
+    expect(
+      await button.evaluate((element) => ({
+        height: element.getBoundingClientRect().height,
+        text: getComputedStyle(element).fontSize,
+      })),
+    ).toEqual({ height: 44, text: "14px" });
+  }
   const row = page.getByRole("tablist", { name: "Группы проверок" });
   expect(await row.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
   for (const tab of await row.getByRole("tab").all()) {

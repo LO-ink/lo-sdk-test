@@ -287,6 +287,9 @@ footer {
 .run-start {
   width: 100%;
 }
+.run-intro {
+  margin-top: 12px;
+}
 
 .run-progress-label {
   display: flex;
@@ -513,7 +516,7 @@ summary:focus-visible {
 }
 .run-feed li {
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr);
   gap: 10px;
   padding: 12px 0;
   border-bottom: 1px solid var(--hairline);
@@ -522,21 +525,16 @@ summary:focus-visible {
 .run-feed li > div {
   min-width: 0;
 }
-.run-feed strong {
+.feed-title {
   display: block;
-
   overflow-wrap: anywhere;
 }
-.feed-bridge,
-.feed-state {
-  display: block;
-}
-.feed-state {
-  max-width: 100px;
-  text-align: right;
-}
-.feed-bridge {
+.feed-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   margin-top: 4px;
+  overflow-wrap: anywhere;
 }
 .feed-error {
   overflow-wrap: anywhere;

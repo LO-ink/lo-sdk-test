@@ -1429,6 +1429,7 @@ export function App() {
                           {running ? (
                             <Button
                               variant="secondary"
+                              size="small"
                               onClick={() =>
                                 controllers.current.get(name)?.abort()
                               }
@@ -1437,6 +1438,7 @@ export function App() {
                             </Button>
                           ) : (
                             <Button
+                              size="small"
                               disabled={!supported}
                               onClick={() => {
                                 void run(name);

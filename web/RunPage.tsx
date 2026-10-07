@@ -50,25 +50,32 @@ function RunFeed({ checks }: { checks: CheckResult[] }) {
                   : "—"}
           </Text>
           <div>
-            <Text as="strong" weight="bold" size="label">
+            <Text as="span" size="label" className="feed-title">
               {check.label}
             </Text>
-            {check.bridge && (
-              <Text as="span" size="caption" className="feed-bridge">
-                {check.bridge}
+            <div className="feed-meta">
+              <Text
+                as="span"
+                size="caption"
+                tone={check.state === "failed" ? "danger" : "secondary"}
+                className="feed-state"
+              >
+                {check.state === "passed" && check.evidence === "response"
+                  ? "Ответ API"
+                  : labels[check.state]}
               </Text>
-            )}
+              {check.bridge && (
+                <Text as="span" size="caption" tone="secondary">
+                  {check.bridge}
+                </Text>
+              )}
+            </div>
             {check.state === "failed" && (
               <Text tone="danger" size="caption" className="feed-error">
                 {check.detail}
               </Text>
             )}
           </div>
-          <Text as="span" size="caption" className="feed-state">
-            {check.state === "passed" && check.evidence === "response"
-              ? "Ответ API"
-              : labels[check.state]}
-          </Text>
         </li>
       ))}
     </ol>
@@ -114,6 +121,10 @@ export function RunPage({
   const current = report?.checks.find((c) => c.state === "running");
   const startedChecks =
     report?.checks.filter((check) => check.state !== "pending") ?? [];
+  const feedChecks = startedChecks
+    .filter((check) => check.state !== "running")
+    .reverse();
+  if (current && !interaction) feedChecks.unshift(current);
   const coverage = report ? bridgeCoverage(report) : [];
   const confirmed = coverage.reduce((sum, item) => sum + item.confirmed, 0);
   const bridgeTotal = coverage.reduce((sum, item) => sum + item.total, 0);
@@ -167,8 +178,13 @@ export function RunPage({
                 ? "Продолжить проверку"
                 : report
                   ? "Проверить снова"
-                  : "Проверить все мосты"}
+                  : "Начать проверку"}
         </Button>
+        {!active && !resumable && (
+          <Text tone="secondary" size="caption" className="run-intro">
+            Автоматические шаги и действия с вашим подтверждением.
+          </Text>
+        )}
         {resumable && !active && (
           <>
             <Text tone="secondary" size="caption">
@@ -218,7 +234,7 @@ export function RunPage({
             />
           </>
         )}
-        {active && (
+        {active && (stopping || (!current && !interaction)) && (
           <Text
             tone="secondary"
             size="label"
@@ -227,11 +243,9 @@ export function RunPage({
           >
             {stopping
               ? "Удаляем тестовые данные…"
-              : current
-                ? `${current.bridge ? `${current.bridge} · ` : ""}${current.label}`
-                : resuming
-                  ? "Восстанавливаем подключение…"
-                  : "Запускаем…"}
+              : resuming
+                ? "Восстанавливаем подключение…"
+                : "Запускаем…"}
           </Text>
         )}
       </section>
@@ -242,24 +256,19 @@ export function RunPage({
           onStop={onStop}
         />
       )}
-      {active && startedChecks.length > 0 && (
-        <section className="run-feed-panel" aria-label="Ход проверки">
-          <Heading level={2}>Сейчас проверяется</Heading>
-          <Text
-            tone="primary"
-            size="body"
-            weight="medium"
-            className="feed-current"
-          >
-            {current
-              ? `${current.bridge ? `${current.bridge} · ` : ""}${current.label}`
-              : "Завершение"}
-          </Text>
-          <RunFeed checks={startedChecks.slice(-7)} />
-          {startedChecks.length > 7 && (
+      {active && feedChecks.length > 0 && (
+        <section
+          className="run-feed-panel"
+          aria-label="Ход проверки"
+          aria-live="polite"
+          aria-relevant="additions text"
+        >
+          <Heading level={2}>Ход проверки</Heading>
+          <RunFeed checks={feedChecks.slice(0, 7)} />
+          {feedChecks.length > 7 && (
             <details>
-              <summary>Все шаги · {startedChecks.length}</summary>
-              <RunFeed checks={startedChecks} />
+              <summary>Предыдущие шаги · {feedChecks.length - 7}</summary>
+              <RunFeed checks={feedChecks.slice(7)} />
             </details>
           )}
         </section>
