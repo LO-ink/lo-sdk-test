@@ -33,11 +33,16 @@ for (const scheme of ["light", "dark"] as const) {
           state: "passed",
           evidence: "data",
         },
-        { label: "Подпись данных запуска", state: "skipped" },
         {
-          label: "Разрешение на сообщения бота",
+          label: "Подпись данных запуска",
+          state: "skipped",
+          detail: "Данные запуска не переданы",
+        },
+        {
+          label: "Развернуть панель",
           state: "manual",
           bridge: "Нативный мост",
+          detail: "Панель уже развёрнута; увеличение высоты проверить нельзя.",
         },
         {
           label: "Ответ на тестовый запрос",
@@ -77,6 +82,13 @@ for (const scheme of ["light", "dark"] as const) {
       );
     });
     const feed = page.locator(".run-feed");
+    await expect(page.getByLabel("Шаг 6 из 6")).toHaveText("6 / 6");
+    const heading = await page
+      .getByRole("heading", { name: "Ход проверки" })
+      .boundingBox();
+    const step = await page.getByLabel("Шаг 6 из 6").boundingBox();
+    expect(step!.x).toBeGreaterThanOrEqual(heading!.x + heading!.width);
+    expect(step!.x + step!.width).toBeLessThanOrEqual(310);
     await expect(feed.getByRole("listitem")).toHaveCount(6);
     await expect(feed.locator(".feed-title").first()).toHaveText(
       "Слышимость звука",
@@ -97,6 +109,12 @@ for (const scheme of ["light", "dark"] as const) {
     ])
       await expect(feed.getByText(status, { exact: true })).toBeVisible();
     await expect(feed.getByText("LO отклонил запись")).toBeVisible();
+    await expect(feed.getByText("Данные запуска не переданы")).toBeVisible();
+    await expect(
+      feed.getByText(
+        "Панель уже развёрнута; увеличение высоты проверить нельзя.",
+      ),
+    ).toBeVisible();
     for (const row of await feed.getByRole("listitem").all()) {
       const geometry = await row.evaluate((element) => {
         const title = element.querySelector<HTMLElement>(".feed-title")!;
@@ -109,6 +127,19 @@ for (const scheme of ["light", "dark"] as const) {
           gap: metaBounds.top - titleBounds.bottom,
           aligned: metaBounds.left === titleBounds.left,
           overflow: element.scrollWidth > element.clientWidth,
+          iconColor: getComputedStyle(element.querySelector(".feed-icon")!)
+            .color,
+          stateColor: getComputedStyle(element.querySelector(".feed-state")!)
+            .color,
+          expectedColor: getComputedStyle(element)
+            .getPropertyValue(
+              element.classList.contains("passed")
+                ? "--lo-color-success"
+                : element.classList.contains("failed")
+                  ? "--lo-color-danger"
+                  : "--lo-color-text-secondary",
+            )
+            .trim(),
         };
       });
       expect(geometry.width).toBe(266);
@@ -116,6 +147,17 @@ for (const scheme of ["light", "dark"] as const) {
       expect(geometry.gap).toBeGreaterThanOrEqual(4);
       expect(geometry.aligned).toBe(true);
       expect(geometry.overflow).toBe(false);
+      expect(geometry.iconColor).toBe(geometry.stateColor);
+      // Resolve the inherited SDK token in the browser's computed color format.
+      const expectedColor = await page.evaluate((color) => {
+        const element = document.createElement("span");
+        element.style.color = color;
+        document.body.append(element);
+        const computed = getComputedStyle(element).color;
+        element.remove();
+        return computed;
+      }, geometry.expectedColor);
+      expect(geometry.stateColor).toBe(expectedColor);
     }
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth),

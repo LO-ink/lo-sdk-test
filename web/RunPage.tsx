@@ -28,6 +28,13 @@ const filters = {
   Пропуски: "skipped",
   "Не проверено": "manual",
 } as const;
+function statusTone(state: CheckResult["state"]) {
+  return state === "passed"
+    ? "success"
+    : state === "failed"
+      ? "danger"
+      : "secondary";
+}
 function RunFeed({ checks }: { checks: CheckResult[] }) {
   return (
     <ol className="run-feed">
@@ -36,6 +43,7 @@ function RunFeed({ checks }: { checks: CheckResult[] }) {
           <Text
             as="span"
             size="caption"
+            tone={statusTone(check.state)}
             className="feed-icon"
             aria-hidden="true"
           >
@@ -57,7 +65,7 @@ function RunFeed({ checks }: { checks: CheckResult[] }) {
               <Text
                 as="span"
                 size="caption"
-                tone={check.state === "failed" ? "danger" : "secondary"}
+                tone={statusTone(check.state)}
                 className="feed-state"
               >
                 {check.state === "passed" && check.evidence === "response"
@@ -70,11 +78,18 @@ function RunFeed({ checks }: { checks: CheckResult[] }) {
                 </Text>
               )}
             </div>
-            {check.state === "failed" && (
-              <Text tone="danger" size="caption" className="feed-error">
-                {check.detail}
-              </Text>
-            )}
+            {check.detail &&
+              ["failed", "manual", "skipped", "cancelled"].includes(
+                check.state,
+              ) && (
+                <Text
+                  tone={check.state === "failed" ? "danger" : "secondary"}
+                  size="caption"
+                  className="feed-detail"
+                >
+                  {check.detail}
+                </Text>
+              )}
           </div>
         </li>
       ))}
@@ -118,7 +133,9 @@ export function RunPage({
   const resumable = canResume(report) && Boolean(onResume);
   const active = starting || report?.state === "running";
   const summary = report ? summarize(report) : null;
-  const current = report?.checks.find((c) => c.state === "running");
+  const currentIndex =
+    report?.checks.findIndex((check) => check.state === "running") ?? -1;
+  const current = currentIndex >= 0 ? report?.checks[currentIndex] : undefined;
   const startedChecks =
     report?.checks.filter((check) => check.state !== "pending") ?? [];
   const feedChecks = startedChecks
@@ -263,7 +280,20 @@ export function RunPage({
           aria-live="polite"
           aria-relevant="additions text"
         >
-          <Heading level={2}>Ход проверки</Heading>
+          <div className="section-heading">
+            <Heading level={2}>Ход проверки</Heading>
+            {current && report && (
+              <Text
+                as="span"
+                size="label"
+                tone="secondary"
+                className="feed-step"
+                aria-label={`Шаг ${currentIndex + 1} из ${report.checks.length}`}
+              >
+                {currentIndex + 1} / {report.checks.length}
+              </Text>
+            )}
+          </div>
           <RunFeed checks={feedChecks.slice(0, 7)} />
           {feedChecks.length > 7 && (
             <details>

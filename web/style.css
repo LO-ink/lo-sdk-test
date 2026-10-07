@@ -536,7 +536,11 @@ summary:focus-visible {
   margin-top: 4px;
   overflow-wrap: anywhere;
 }
-.feed-error {
+.feed-step {
+  white-space: nowrap;
+}
+.feed-error,
+.feed-detail {
   overflow-wrap: anywhere;
   margin-bottom: 0;
 }

@@ -1441,3 +1441,66 @@ test("run feed keeps the current step first and previous history disjoint withou
   );
   assert.ok(page.getByRole("heading", { name: "Current action" }));
 });
+
+test("unverified expand and deferred close explain their classification while a guided step shows its full-plan position", () => {
+  versionsUnavailable();
+  const report: RunReport = {
+    id: "classified-fixture",
+    state: "running",
+    startedAt: new Date().toISOString(),
+    checks: [
+      {
+        id: "native:expand",
+        label: "Развернуть панель",
+        group: "LO",
+        state: "manual",
+        detail: "Панель уже развёрнута; увеличение высоты проверить нельзя.",
+        durationMs: 0,
+      },
+      {
+        id: "native:close",
+        label: "Закрыть приложение",
+        group: "LO",
+        state: "manual",
+        detail:
+          "Проверяется после прогона, чтобы не закрыть приложение посередине.",
+        durationMs: 0,
+      },
+      {
+        id: "native:haptic",
+        label: "Вибрация",
+        group: "LO",
+        state: "running",
+        detail: "",
+        durationMs: 0,
+      },
+    ],
+  };
+  const page = render(
+    <RunPage
+      report={report}
+      interaction={{
+        title: "Вибрация",
+        detail: "Подтвердите физический эффект",
+        phase: "confirm",
+        attempt: 1,
+        start() {},
+        repeat() {},
+        answer() {},
+      }}
+      starting={false}
+      stopping={false}
+      exporting={false}
+      onStart={() => {
+        throw new Error("Display must not start a run");
+      }}
+      onStop={() => {}}
+      onExport={() => {}}
+      onDeferred={() => {}}
+    />,
+  );
+  assert.equal(page.getByLabelText("Шаг 3 из 3").textContent, "3 / 3");
+  assert.ok(page.getByText(report.checks[0].detail));
+  assert.ok(page.getByText(report.checks[1].detail));
+  assert.equal(page.getAllByText("Вибрация").length, 1);
+});
