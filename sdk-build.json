@@ -22,17 +22,17 @@
   "packages": [
     {
       "name": "@lo-ink/adapter-lo-legacy",
-      "version": "0.3.1",
+      "version": "0.3.2",
       "repository": "lo-platform-adapters",
-      "sourceCommit": "47a52406d68224960e4ec16c4531ef4a7fa1194f",
-      "integrity": "sha512-lhovLJ6mq0j3hJdWHPBWPG3GwD77iHAbhkeBkl52RekC5XPGJE1K6P71dOG9sofrBxepMJVSd8jl6jNjrJPBkA=="
+      "sourceCommit": "2c79a215af91596a4296ba820c175c2857149b43",
+      "integrity": "sha512-blolE2uIq2YyJo0iTvetQvm6ECWr91xd76jB4+aRroK/bXbtWfBa02JTgK3s7+srNFqE1JJIRA/mk/akilJNCQ=="
     },
     {
       "name": "@lo-ink/adapter-webapp-compat",
-      "version": "0.20.2",
+      "version": "0.20.3",
       "repository": "lo-platform-adapters",
-      "sourceCommit": "47a52406d68224960e4ec16c4531ef4a7fa1194f",
-      "integrity": "sha512-6fkcsjmlr1OiTYgRZvAANPvt9Au4DYkFnoymDu/aBGtpqlMM0an4xWAx5UVg259fIYSLXFNBQuCkUr54HUQKpg=="
+      "sourceCommit": "2c79a215af91596a4296ba820c175c2857149b43",
+      "integrity": "sha512-t+cl0bvr4/CW6eylnD3t/SVZmZakVppbSQYHhUXy54cjGBKFR98f2YjpwkyEMrWz2CrOpbkZVcGrci2PX7c/fA=="
     },
     {
       "name": "@lo-ink/bot-sdk",

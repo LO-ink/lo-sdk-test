@@ -26,8 +26,8 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
-    "@lo-ink/adapter-lo-legacy": "0.3.1",
-    "@lo-ink/adapter-webapp-compat": "0.20.2",
+    "@lo-ink/adapter-lo-legacy": "0.3.2",
+    "@lo-ink/adapter-webapp-compat": "0.20.3",
     "@lo-ink/bot-sdk": "0.5.1",
     "@lo-ink/design-tokens": "0.3.1",
     "@lo-ink/miniapp-sdk": "0.22.2",
