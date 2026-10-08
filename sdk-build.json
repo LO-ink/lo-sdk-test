@@ -1,5 +1,5 @@
 {
-  "appVersion": "0.4.35",
+  "appVersion": "0.4.36",
   "source": "npm-registry",
   "repositories": [
     {
@@ -32,10 +32,10 @@
     },
     {
       "name": "@lo-ink/miniapp-sdk",
-      "version": "0.22.3",
+      "version": "0.23.0",
       "repository": "lo-miniapp-sdk",
-      "sourceCommit": "0272fd42f7df8bc5ca835e717508a8853568cf57",
-      "integrity": "sha512-gogmnu5bjuqtrYHp5AqVenNk18B3dKxfDhhyfqX66KiPV+Dp8aGAzTHcNUfML9wnFaeBJjHXhx5oGKXrTH3LCQ=="
+      "sourceCommit": "944e902ad2afcd0d9ab890db1ea32c32002f37b5",
+      "integrity": "sha512-Co6UysaCETXdi+u7QxOPBrRQ430RaOQCXeyGQdyNa8uagCw4NQcGlUTSP881ui79ohEVOuPY6uOvtmRQVBPYDw=="
     },
     {
       "name": "@lo-ink/ui",
