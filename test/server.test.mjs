@@ -1106,3 +1106,132 @@ test("disconnect aborts a pending SDK upload and removes its private temporary f
     await new Promise((resolve) => setTimeout(resolve, 10));
   assert.deepEqual(await readdir(request.uploadDirectory), []);
 });
+
+test("historical launch verification uses Node and Go without changing current session, resources, consent or budget", async (t) => {
+  const { createGoVerifier } = await import("../server/initdata-go.mjs");
+  let clock = now;
+  let goChecks = 0;
+  const go = createGoVerifier();
+  const request = await fixture(
+    t,
+    {
+      LO_BOT_TOKEN: "42:synthetic-test-token",
+      LO_APP_URL: "https://app.example.test/",
+    },
+    async (_url, options) => {
+      const body = JSON.parse(options.body);
+      return Response.json({
+        ok: true,
+        result: {
+          message_id: 77,
+          date: now,
+          chat: { id: "9007199254740993", type: "private" },
+          text: body.text,
+        },
+      });
+    },
+    () => clock,
+    {
+      verifyWithGo: async (...args) => {
+        goChecks++;
+        return go(...args);
+      },
+    },
+  );
+  const runId = "11111111-1111-4111-8111-111111111111";
+  const session = await request("/api/session", { raw: signed(), runId });
+  const cookie = session.headers.get("set-cookie").split(";")[0];
+  await request("/api/consent", { allowed: true }, cookie);
+  assert.equal(
+    (await request("/api/bot", { operation: "sendMessage" }, cookie)).status,
+    200,
+  );
+  const verification = await request(
+    "/api/verify-launch",
+    { raw: signed() },
+    cookie,
+  );
+  assert.equal(verification.status, 200);
+  assert.equal(verification.headers.get("set-cookie"), null);
+  assert.deepEqual(await verification.json(), {
+    verified: true,
+    verifier: "Node HMAC + Go HMAC",
+    verifiers: ["Node HMAC", "Go HMAC"],
+    userId: "9007199254740993",
+    appId: "test-app",
+  });
+  assert.equal(goChecks, 2);
+  assert.equal(
+    (await request("/api/bot", { operation: "sendMessage" }, cookie)).status,
+    429,
+  );
+  clock += 3;
+  // Successful send with the unchanged cookie also proves consent was not reset.
+  assert.equal(
+    (await request("/api/bot", { operation: "sendMessage" }, cookie)).status,
+    200,
+  );
+  for (const raw of [
+    signed().replace("9007199254740993", "42"),
+    signed({ app_id: "wrong" }),
+    signed({ auth_date: String(now - 3601) }),
+  ]) {
+    const denied = await request("/api/verify-launch", { raw }, cookie);
+    assert.equal(denied.status, 401);
+    assert.equal(denied.headers.get("set-cookie"), null);
+  }
+  const resumed = await request(
+    "/api/session",
+    { raw: signed(), runId, resume: true },
+    cookie,
+  );
+  assert.equal(resumed.status, 200);
+  assert.deepEqual((await resumed.json()).resources, {
+    message: true,
+    files: [],
+    metadata: false,
+  });
+});
+
+test("historical verification keeps verifier disagreement, allowlist and request-origin policy", async (t) => {
+  for (const [config, dependencies, expected] of [
+    [{ LO_TEST_USER_IDS: "other" }, {}, 403],
+    [
+      {},
+      {
+        verifyWithGo: async () => ({
+          verified: true,
+          appId: "test-app",
+          userId: "other",
+          authDate: now,
+        }),
+      },
+      503,
+    ],
+  ]) {
+    const request = await fixture(
+      t,
+      config,
+      undefined,
+      undefined,
+      dependencies,
+    );
+    const response = await request("/api/verify-launch", { raw: signed() });
+    assert.equal(response.status, expected);
+    assert.equal(response.headers.get("set-cookie"), null);
+  }
+  const request = await fixture(t);
+  for (const headers of [
+    { origin: "https://foreign.example" },
+    { "x-sdk-test": "0" },
+  ]) {
+    const denied = await request(
+      "/api/verify-launch",
+      { raw: signed() },
+      "",
+      headers,
+    );
+    assert.equal(denied.status, 403);
+    assert.equal(denied.headers.get("set-cookie"), null);
+  }
+});

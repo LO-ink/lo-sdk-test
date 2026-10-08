@@ -304,7 +304,7 @@ export function createHandler(configuration = process.env, dependencies = {}) {
           throw new RequestError(429, "Сервер занят. Повторите проверку позже");
         activePosts++;
         admitted = true;
-        if (url.pathname === "/api/session") {
+        if (["/api/session", "/api/verify-launch"].includes(url.pathname)) {
           if (!appConfigured)
             throw new RequestError(
               503,
@@ -340,6 +340,16 @@ export function createHandler(configuration = process.env, dependencies = {}) {
                 "Результаты проверки Node и Go не совпали",
               );
             verifiers.push("Go HMAC");
+          }
+          if (url.pathname === "/api/verify-launch") {
+            json(response, 200, {
+              verified: true,
+              verifier: verifiers.join(" + "),
+              verifiers,
+              userId: launch.user.id,
+              appId: launch.appId,
+            });
+            return;
           }
           if (
             (body.runId !== undefined &&
