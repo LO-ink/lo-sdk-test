@@ -45,3 +45,22 @@ test("reported SDK versions and integrity match the public registry lock and ins
     assert.equal(installed.version, entry.version, entry.name);
   }
 });
+
+test("the native consumer cannot depend on or bundle a platform adapter", () => {
+  const manifest = readJson("package.json");
+  const lock = readJson("package-lock.json");
+  assert.equal(
+    Object.keys(manifest.dependencies).some((name) =>
+      /adapter|compat|legacy/i.test(name),
+    ),
+    false,
+  );
+  assert.equal(
+    Object.keys(lock.packages).some((name) =>
+      /node_modules\/@lo-ink\/adapter-/.test(name),
+    ),
+    false,
+  );
+  const bridges = readFileSync(new URL("web/bridges.ts", root), "utf8");
+  assert.doesNotMatch(bridges, /WebApp|adapter-lo|adapter-webapp/);
+});

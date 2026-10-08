@@ -24,7 +24,7 @@ const saved = (id: string, state: CheckResult["state"]): CheckResult => ({
   durationMs: 7,
 });
 
-test("all unattended bridge checks precede assisted work while producer chains keep their order", async () => {
+test("automatic checks precede assisted work while native producer chains keep their order", async () => {
   const order: string[] = [];
   const ids = [
     "server",
@@ -39,16 +39,7 @@ test("all unattended bridge checks precede assisted work while producer chains k
     "bot:getIdentity",
     "bot:sendMessage",
     "bot:editMessage",
-    "bot:getFile",
-    "bot:downloadFile",
     "native:event:themeChanged",
-    "compat:ready",
-    "compat:startAccelerometer",
-    "compat:stopAccelerometer",
-    "compat:deviceStorageSet",
-    "compat:deviceStorageGet",
-    "compat:haptic",
-    "compat:event:themeChanged",
     "bot:delivery",
   ];
   const plan = orderRunPlan(
@@ -58,8 +49,6 @@ test("all unattended bridge checks precede assisted work while producer chains k
         return "ok";
       }),
     ),
-    undefined,
-    "native",
   );
   const firstAssisted = plan.findIndex((item) => item.phase === "assisted");
   assert.ok(
@@ -71,50 +60,34 @@ test("all unattended bridge checks precede assisted work while producer chains k
   for (const [before, after] of [
     ["server", "signature"],
     ["native:startAccelerometer", "native:stopAccelerometer"],
-    ["native:stopAccelerometer", "compat:startAccelerometer"],
     ["native:cloudStorageSet", "native:cloudStorageGet"],
-    ["compat:deviceStorageSet", "compat:deviceStorageGet"],
     ["native:requestWriteAccess", "bot:sendMessage"],
     ["bot:sendMessage", "bot:editMessage"],
-    ["bot:getFile", "bot:downloadFile"],
-    ["compat:haptic", "compat:event:themeChanged"],
+    ["native:haptic", "native:event:themeChanged"],
     ["bot:sendMessage", "bot:delivery"],
   ])
     assert.ok(
       plan.findIndex((item) => item.id === before) <
         plan.findIndex((item) => item.id === after),
     );
-  const report = await runChecks(
+  await runChecks(
     plan,
     check("cleanup"),
     new AbortController().signal,
     () => {},
-    12000,
-    { assistedBridge: "native" },
   );
-  assert.equal(report.assistedBridge, "native");
-  assert.equal(order.includes("compat:haptic"), false);
   assert.equal(order.includes("native:haptic"), true);
-  assert.equal(
-    report.checks.find((item) => item.id === "compat:haptic")!.scopeExcluded,
-    true,
-  );
-  assert.equal(
-    report.checks.find((item) => item.id === "compat:haptic")!.state,
-    "manual",
-  );
 });
 
-test("reordered revision-one reports resume by immutable identity without replaying completed effects", async () => {
+test("native reports resume without replaying completed effects, and changed plan identity is rejected", async () => {
   const old: RunReport = {
     id: "old",
     state: "cancelled",
     startedAt: new Date().toISOString(),
     suiteRevision: 1,
-    assistedBridge: "compat",
     checks: [
       saved("native:haptic", "passed"),
-      saved("compat:ready", "cancelled"),
+      saved("native:ready", "cancelled"),
       saved("cleanup", "passed"),
     ],
   };
@@ -124,13 +97,12 @@ test("reordered revision-one reports resume by immutable identity without replay
       check("native:haptic", async () => {
         assert.fail("Completed effect must not replay");
       }),
-      check("compat:ready", async () => {
+      check("native:ready", async () => {
         calls++;
         return "fresh";
       }),
     ],
     old.checks,
-    "compat",
   );
   assert.equal(matchesPlan(old, [...plan, check("cleanup")]), true);
   for (const changed of [
@@ -145,32 +117,27 @@ test("reordered revision-one reports resume by immutable identity without replay
     new AbortController().signal,
     () => {},
     12000,
-    { previous: old, assistedBridge: "native" },
+    { previous: old },
   );
-  assert.equal(report.assistedBridge, "compat");
   assert.equal(calls, 1);
-  const retained = report.checks.find((item) => item.id === "native:haptic")!;
-  assert.equal(retained.detail, "retained");
-  assert.equal(retained.durationMs, 7);
-  assert.equal(retained.scopeExcluded, undefined);
+  assert.equal(
+    report.checks.find((item) => item.id === "native:haptic")!.detail,
+    "retained",
+  );
+  assert.equal(
+    report.checks.find((item) => item.id === "native:haptic")!.durationMs,
+    7,
+  );
 });
 
-test("excluded end actions cannot run, shared theme stays independent, interrupted bot retries stay assisted", () => {
+test("historical compatibility end actions cannot run and interrupted bot reads require assistance", () => {
   const plan = orderRunPlan(
     [
       check("native:system-theme"),
-      check("compat:system-theme"),
       check("native:close"),
-      check("compat:close"),
       check("bot:getCommands"),
     ],
     [{ ...saved("bot:getCommands", "cancelled"), interrupted: true }],
-    "native",
-  );
-  assert.ok(
-    plan
-      .filter((item) => item.id.endsWith("system-theme"))
-      .every((item) => !item.scopeExcluded),
   );
   assert.equal(
     plan.find((item) => item.id === "bot:getCommands")!.phase,
@@ -183,15 +150,11 @@ test("excluded end actions cannot run, shared theme stays independent, interrupt
     state: "finished",
     owner,
     checks: [
-      { ...saved("native:close", "manual") },
-      { ...saved("compat:close", "manual"), scopeExcluded: true },
+      saved("native:close", "manual"),
+      saved("compat:close", "manual"),
       saved("cleanup", "passed"),
     ],
   };
-  assert.equal(canRunDeferred(report, "native:close", owner), true);
-  assert.equal(canRunDeferred(report, "compat:close", owner), false);
-  report.assistedBridge = "native";
-  delete report.checks[1].scopeExcluded;
   assert.equal(canRunDeferred(report, "compat:close", owner), false);
   assert.equal(canRunDeferred(report, "native:close", owner), true);
 });

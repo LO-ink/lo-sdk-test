@@ -464,6 +464,7 @@ test("a crash-restored cleanup ledger prevents replacing the run even without a 
   versionsUnavailable();
   const report: RunReport = {
     id: "11111111-1111-4111-8111-111111111111",
+    owner: { appId: "app", userId: "42" },
     startedAt: new Date().toISOString(),
     state: "cancelled",
     checks: [
@@ -1512,4 +1513,133 @@ test("unverified expand and deferred close explain their classification while a 
   assert.ok(page.getByText(report.checks[0].detail));
   assert.ok(page.getByText(report.checks[1].detail));
   assert.equal(page.getAllByText("Вибрация").length, 1);
+});
+
+test("removed compatibility cleanup is explicit and cannot be relabelled as native restoration", () => {
+  const recovery = {
+    snapshot: "historical",
+    id: "11111111-1111-4111-8111-111111111111",
+    owner: { appId: "app", userId: "42" },
+    startedAt: new Date().toISOString(),
+    recovery: {
+      compat: {
+        key: "lo-sdk-run-11111111-1111-4111-8111-111111111111-compat",
+        written: ["deviceStorage"],
+        mutations: ["setButton"],
+        original: {},
+      },
+    },
+  };
+  const page = render(
+    <RunPage
+      report={null}
+      pendingRecovery={recovery}
+      interaction={null}
+      starting={false}
+      stopping={false}
+      exporting={false}
+      onRecover={() =>
+        assert.fail("A removed route cannot recover automatically")
+      }
+      onStart={() => assert.fail("Outstanding debt cannot be discarded")}
+      onStop={() => {}}
+      onExport={() => {}}
+      onDeferred={() => {}}
+    />,
+  );
+  assert.ok(page.getByText(/Нужна ручная очистка/));
+  assert.ok(
+    page.getByText(/lo-sdk-run-11111111-1111-4111-8111-111111111111-compat/),
+  );
+  assert.equal(
+    (
+      page.getByRole("button", {
+        name: "Восстановить прежний прогон",
+      }) as HTMLButtonElement
+    ).disabled,
+    true,
+  );
+  assert.equal(page.queryByRole("button", { name: "Начать проверку" }), null);
+});
+
+test("actual App preserves recent unknown-owner debt as a manual-only ticket without host effects or overwrite", async () => {
+  const { dependencyKey } = await import("../web/run-storage.ts");
+  const { default: build } = await import("../sdk-build.json");
+  const id = "11111111-1111-4111-8111-111111111111";
+  const key = `lo-sdk-run-${id}-native`;
+  const saved = JSON.stringify({
+    schema: 1,
+    appVersion: build.appVersion,
+    dependencies: dependencyKey(build.packages),
+    report: {
+      id,
+      startedAt: new Date(Date.now() - 60000).toISOString(),
+      state: "cancelled",
+      suiteRevision: 1,
+      checks: [
+        {
+          id: "cleanup",
+          label: "cleanup",
+          group: "fixture",
+          state: "failed",
+          detail: "Interrupted",
+          durationMs: 1,
+        },
+      ],
+      recovery: {
+        native: {
+          key,
+          written: ["deviceStorage"],
+          mutations: [],
+          original: {},
+        },
+      },
+    },
+  });
+  const calls: string[] = [];
+  Object.assign(globalThis, {
+    LO: {
+      MiniAppNative: {
+        protocolVersion: 1,
+        generation: "unknown-owner",
+        launchData: "",
+        operations: [
+          "deviceStorageRemove",
+          "setBackgroundColor",
+          "setBottomBarColor",
+        ],
+        capabilities: ["deviceStorage", "backgroundColor", "bottomBarColor"],
+        snapshot: () => ({ colorScheme: "light" }),
+        subscribe: () => () => {},
+        postMessage: (raw: string) => calls.push(JSON.parse(raw).operation),
+      },
+    },
+  });
+  localStorage.setItem("sdk-test.last-run", saved);
+  versionsUnavailable();
+  try {
+    const page = render(<App />);
+    assert.ok(page.getByText(/Владелец прежнего прогона неизвестен/));
+    assert.ok(page.getByText(new RegExp(key)));
+    const restore = page.getByRole("button", {
+      name: "Восстановить прежний прогон",
+    }) as HTMLButtonElement;
+    assert.equal(restore.disabled, true);
+    fireEvent.click(restore);
+    for (const name of [
+      "Начать проверку",
+      "Продолжить проверку",
+      "Начать заново",
+      "Скачать отчёт",
+    ])
+      assert.equal(page.queryByRole("button", { name }), null);
+    await waitFor(() =>
+      assert.ok(page.getByText(/Владелец прежнего прогона неизвестен/)),
+    );
+    assert.deepEqual(calls, []);
+    assert.equal(localStorage.getItem("sdk-test.last-run"), saved);
+  } finally {
+    cleanup();
+    Reflect.deleteProperty(globalThis, "LO");
+  }
 });

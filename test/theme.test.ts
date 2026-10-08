@@ -3,8 +3,8 @@ import test from "node:test";
 import { applyPalette, palette } from "../web/theme.ts";
 
 test("native themes use current screen surfaces and accessible web control roles", () => {
-  assert.equal(palette("lo", "light")["--page"], "#F7FBFF");
-  const dark = palette("lo", "dark");
+  assert.equal(palette("light")["--page"], "#F7FBFF");
+  const dark = palette("dark");
   assert.equal(dark["--page"], "#0B0E17");
   assert.equal(dark["--surface"], "#111522");
   assert.equal(dark["--ink"], "#F7FBFF");
@@ -12,7 +12,7 @@ test("native themes use current screen surfaces and accessible web control roles
   assert.equal(dark["--accent-fill"], "#5060E8");
   assert.equal(dark["--accent-text"], "#91A2FF");
   assert.equal(
-    palette("lo", "light", {
+    palette("light", {
       button_color: "#5969fc",
       button_text_color: "#f7fbff",
     })["--accent-fill"],
@@ -37,7 +37,6 @@ test("host theme colors reach canvas and all action roles, while invalid colors 
         },
       },
     },
-    "lo",
     "light",
     params,
   );
@@ -49,13 +48,10 @@ test("host theme colors reach canvas and all action roles, while invalid colors 
   assert.equal(values.get("--accent-ink"), params.button_text_color);
   assert.equal(values.get("--accent-text"), params.link_color);
   assert.equal(
-    palette("lo", "light", {
+    palette("light", {
       button_color: "var(--unsafe)",
       bg_color: "url(unsafe)",
     })["--page"],
     "#F7FBFF",
   );
-  const compat = palette("telegram", "light", params);
-  assert.equal(compat["--page"], params.secondary_bg_color);
-  assert.equal(compat["--surface"], params.bg_color);
 });

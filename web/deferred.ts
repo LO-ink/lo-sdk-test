@@ -17,7 +17,7 @@ export type DeferredTicket = DeferredIdentity & {
   appVersion: string;
   runId: string;
   id: string;
-  bridgeId: "native" | "compat" | "bot";
+  bridgeId: "native" | "bot";
   operation: "close" | "sendData" | "delivery";
   attemptId: string;
   createdAt: number;
@@ -55,7 +55,7 @@ export function canVerifyDelivery(report: RunReport | null): boolean {
   return canRunDeferred(report, "bot:delivery", report?.owner ?? null);
 }
 export function isDeferredCheck(id: string): boolean {
-  return /^(native|compat):(close|sendData)$/.test(id) || id === "bot:delivery";
+  return /^native:(close|sendData)$/.test(id) || id === "bot:delivery";
 }
 /** The same invariant gates UI actions, persisted attempts, and result commits. */
 export function canRunDeferred(

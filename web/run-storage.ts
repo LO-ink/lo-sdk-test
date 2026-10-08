@@ -216,14 +216,20 @@ export function readRun(
   dependencies: string,
   now = Date.now(),
 ): RunReport | null {
-  return readStoredRun(storage, dependencies, now, false);
+  const report = readStoredRun(storage, dependencies, now, false);
+  return (report && !report.owner && hasRecoveryDebt(report)) ||
+    report?.assistedBridge === "compat" ||
+    report?.checks.some((check) => check.id.startsWith("compat:")) ||
+    report?.recovery?.compat
+    ? null
+    : report;
 }
 
 /** Cleanup intent survives evidence expiry, without exposing old check results. */
 export type RecoveryTicket = {
   snapshot: string;
   id: string;
-  owner: NonNullable<RunReport["owner"]>;
+  owner?: RunReport["owner"];
   startedAt: string;
   recovery: Record<string, Recovery>;
 };
@@ -236,10 +242,9 @@ export function readRecovery(
     const snapshot = storage.getItem(lastRunKey);
     if (!snapshot) return null;
     const source = { getItem: () => snapshot, setItem: () => {} };
-    if (readStoredRun(source, dependencies, now, false)) return null;
+    if (readRun(source, dependencies, now)) return null;
     const report = readStoredRun(source, dependencies, now, true);
-    if (!report?.owner || !report.recovery || !hasRecoveryDebt(report))
-      return null;
+    if (!report?.recovery || !hasRecoveryDebt(report)) return null;
     return {
       snapshot,
       id: report.id,

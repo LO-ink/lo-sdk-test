@@ -486,15 +486,6 @@ summary:focus-visible {
   gap: 8px;
   margin-top: 8px;
 }
-.bridge-coverage {
-  border-bottom: 1px solid var(--hairline);
-  padding: 12px 0;
-}
-.bridge-coverage p {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-}
 .run-check.passed:has(.run-state) .run-state {
   max-width: 112px;
   white-space: normal;

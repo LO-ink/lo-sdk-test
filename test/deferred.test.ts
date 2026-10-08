@@ -42,10 +42,10 @@ const storage = () => {
   };
 };
 
-test("each sendData attempt and bridge has a distinct persisted payload that survives reopening", () => {
+test("each native sendData attempt has a distinct persisted payload that survives reopening", () => {
   const store = storage(),
     run = report();
-  const tickets = ["native:sendData", "native:sendData", "compat:sendData"].map(
+  const tickets = ["native:sendData", "native:sendData", "native:sendData"].map(
     (id) => createDeferredTicket(run, id, "0.4.10", identity, 100),
   );
   assert.equal(new Set(tickets.map((ticket) => ticket.data)).size, 3);
@@ -235,7 +235,7 @@ test("late positive correlation after cancellation cannot confirm a deferred act
 });
 
 test("every deferred action rejects foreign owners and unrestored reports at creation, reload and commit", () => {
-  for (const id of ["native:sendData", "compat:sendData", "native:close"]) {
+  for (const id of ["native:sendData", "native:close"]) {
     const good = report();
     const ticket = createDeferredTicket(good, id, "build", identity);
     const store = storage();

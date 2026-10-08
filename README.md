@@ -1,14 +1,16 @@
 # LO SDK Test
 
-A mini-app for checking LO SDKs, native bridges and the Bot API. Hosted at [sdk-test.zay.media](https://sdk-test.zay.media).
+A mini-app for checking LO SDKs, the native host and the Bot API. Hosted at [sdk-test.zay.media](https://sdk-test.zay.media).
 
-Select the bridge for assisted scenarios, then start the guided run. Automatic checks finish for both bridges before permissions and device confirmations begin. Assisted scenarios use the selected bridge for that run; the other bridge remains unverified for those effects. Shared system-theme changes retain separate observations through both bridges. Download the resulting report after restoration. Audio, vibration, colors and gestures require confirmation of the observed device effect. A successful API response alone does not establish that effect. Skipped checks remain unverified. The manual tab runs individual methods. The UI tab shows all seventeen published UI primitives, including disabled, loading, validation, icon and typography states. Its examples work locally without bridge or Bot API calls; the theme selector applies to the whole application.
+Start the guided run. Automatic checks finish before permissions and device confirmations begin. All host checks use LO’s native SDK connection. Download the resulting report after restoration. Audio, vibration, colors and gestures require confirmation of the observed device effect. A successful API response alone does not establish that effect. Skipped checks remain unverified. The manual tab runs individual methods. The UI tab shows all seventeen published UI primitives, including disabled, loading, validation, icon and typography states. Its examples work locally without bridge or Bot API calls; the theme selector applies to the whole application.
 
 A stopped run offers Continue and a separate Start over action. Completed results, run identity and progress stay intact, including after reopening. Continuation verifies a fresh session and requests fresh bot consent in the assisted phase when unfinished bot writes need it; it never restores permission from browser storage. Run-owned cleanup state is saved before mutations so interrupted storage and screen changes can be restored before continuing. An unresolved restoration is shown explicitly and cannot be discarded by starting another run.
 
 Progress is retained for 24 hours and is bound to the SDK dependency set, the exact check plan and the same LO app/user. Interrupted bot writes require a specific retry choice because a lost response does not prove that no message was sent. Missing server-owned file/message references remain unverified instead of repeating completed sends. Reports from a different SDK dependency set require a fresh run. Deferred delivery tickets remain bound to their original build.
 
-Native and compatibility bridges retain independent results. To confirm device effects through the other bridge, select it for a new run. The report records the selected route, unverified scenarios and platform limitations.
+The main application uses only LO’s native connection. Older reports may retain cleanup obligations for a removed compatibility route. These remain explicitly unresolved, with the original storage key and settings shown for manual cleanup in the original app/account; they are never replayed through the native connection or silently discarded. Valid old cleanup records without an app/user identity are also retained for manual resolution, with automatic cleanup blocked.
+
+If browser storage access or a checkpoint write fails, the app remains usable for SDK browsing and manual checks, but automatic runs and recovery stop. In-memory results are not presented as durably saved cleanup. Restore storage permission and reopen the app before continuing.
 
 ## Local development
 
@@ -105,11 +107,7 @@ for report disclosures, tables, file timestamps and page structure.
 The [dedicated Secretary flow](docs/secretary.md) verifies owner-scoped incoming,
 review draft and server sending evidence without sharing a working bot consumer.
 
-Native LO uses `createLoClient` from Mini App SDK 0.22 and the HTTP transport
-from Bot SDK 0.5. The application has no dependency on native compatibility
-re-export packages. The separately selected WebApp compatibility bridge retains
-its explicit adapters. Resume remains scoped to the recorded bridge/dependency
-set; native SDK version changes do not relabel old results as newly tested.
+LO uses `createLoClient` from Mini App SDK and the HTTP transport from Bot SDK. The application has no platform-adapter dependencies. Resume remains scoped to the recorded dependency set; SDK version changes do not relabel old results as newly tested.
 
 The architecture gate parses application CSS and rejects direct typography,
 control appearance and shared SDK selector overrides. Layout, host tokens and

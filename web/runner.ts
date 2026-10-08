@@ -1,4 +1,3 @@
-export type AssistedBridge = "native" | "compat";
 export type RunPhase = "automatic" | "assisted" | "observation" | "deferred";
 export type CheckState =
   | "pending"
@@ -71,7 +70,7 @@ export type RunReport = {
   state: "running" | "finished" | "cancelled";
   checks: CheckResult[];
   suiteRevision?: 1;
-  assistedBridge?: AssistedBridge;
+  assistedBridge?: "native" | "compat";
   recovery?: Record<string, Recovery>;
   resumeBlocked?: boolean;
   resumeError?: string;
@@ -136,8 +135,15 @@ export function hasRecoveryDebt(report: RunReport | null): boolean {
   );
 }
 export function canResume(report: RunReport | null): report is RunReport {
-  if (!report || report.state === "running") return false;
-  if (hasRecoveryDebt(report)) return true;
+  if (
+    !report ||
+    report.state === "running" ||
+    report.assistedBridge === "compat" ||
+    report.checks.some((check) => check.id.startsWith("compat:"))
+  )
+    return false;
+  if (hasRecoveryDebt(report))
+    return Boolean(report.owner?.appId && report.owner?.userId);
   if (report.resumeBlocked) return false;
   return (
     report.state === "cancelled" &&
@@ -222,7 +228,6 @@ export async function runChecks(
   timeoutMs = 12000,
   options: {
     previous?: RunReport;
-    assistedBridge?: AssistedBridge;
     id?: string;
     prepare?: (signal: AbortSignal) => Promise<void>;
   } = {},
@@ -239,7 +244,6 @@ export async function runChecks(
   const report: RunReport = {
     id: previous?.id ?? options.id ?? crypto.randomUUID(),
     owner: previous?.owner,
-    assistedBridge: previous?.assistedBridge ?? options.assistedBridge,
     startedAt: previous?.startedAt ?? new Date().toISOString(),
     suiteRevision: 1,
     state: "running",

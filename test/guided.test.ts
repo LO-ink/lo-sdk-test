@@ -9,12 +9,10 @@ import {
   type Interaction,
 } from "../web/interaction.ts";
 import { guidedBridgeCheck } from "../web/bridge-checks.ts";
-import { bridgeCoverage, runChecks, type CheckOutcome } from "../web/runner.ts";
+import { bridgeCoverage, runChecks } from "../web/runner.ts";
 import { createSuite } from "../web/suite.ts";
 import { availableBridges } from "../web/bridges.ts";
 import { operationNames } from "../web/cases.ts";
-import { createMiniAppClient } from "@lo-ink/miniapp-sdk";
-import { createWebAppAdapter } from "@lo-ink/adapter-webapp-compat";
 const signal = () => new AbortController().signal;
 const tick = async () => {
   for (let i = 0; i < 5; i++) await Promise.resolve();
@@ -328,36 +326,6 @@ test("button confirmation requires a fresh bridge event; cleanup hides only a bu
     signal(),
   );
   assert.deepEqual(calls, []);
-});
-
-test("back and settings checks work through the compatible bridge without text or active setters", async () => {
-  for (const button of ["back", "settings"] as const) {
-    const visibility: boolean[] = [];
-    const observed: Record<string, string> = {};
-    const sdk = createMiniAppClient(
-      createWebAppAdapter(
-        "compat-test",
-        {
-          [button === "back" ? "BackButton" : "SettingsButton"]: {
-            show: () => visibility.push(true),
-            hide: () => visibility.push(false),
-          },
-        },
-        new Set([button === "back" ? "backButton" : "settingsButton"]),
-      ),
-    );
-    const check = suite(sdk, {
-      observed: () => observed,
-      interact: async (prompt: Interaction) => {
-        await prompt.action!("");
-        observed[`${button}ButtonClicked`] = "fresh";
-        return { decision: "yes" };
-      },
-    }).plan.find((check) => check.id === `button:${button}`)!;
-    const result = await check.execute(signal());
-    assert.equal((result as CheckOutcome).state, "passed");
-    assert.deepEqual(visibility, [true, false]);
-  }
 });
 
 test("sensor start acknowledgement without a fresh finite sample fails rather than passing", async () => {
@@ -723,15 +691,15 @@ test("cloud enumeration respects the listener refill budget across every interna
   assert.equal(times.length, 7);
 });
 
-test("legacy discovery stays separate without a native adapter", () => {
+test("a legacy-only host never becomes a native connection", () => {
   const scope = {
     LO: {
       WebApp: { initData: "synthetic", capabilities: ["ready"], ready() {} },
     },
   };
-  const bridges = availableBridges(scope);
+  const bridges = availableBridges(scope as never);
   assert.equal(bridges[0].client, null);
-  assert.equal(bridges[1].client?.adapter.id, "lo-legacy-webapp");
+  assert.equal(bridges.length, 1);
 });
 
 test("bot pacing waits after the actual interactive request even when the user takes time to press", async (t) => {

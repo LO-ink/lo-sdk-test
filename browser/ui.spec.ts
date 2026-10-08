@@ -167,7 +167,8 @@ for (const scheme of ["light", "dark"] as const) {
     });
     expect(focus).toEqual({ style: "solid", offset: "-3px", width: "3px" });
     await page.getByRole("tab", { name: "UI", exact: true }).click();
-    await page.getByRole("button", { name: "Открыть диалог" }).click();
+    await page.getByRole("button", { name: "Открыть диалог" }).focus();
+    await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog", { name: "Пример диалога" });
     await expect(dialog).toBeVisible();
     await expect(
@@ -321,7 +322,7 @@ test("manual filters retain whole labels, field geometry and text/action gaps", 
     320,
   );
 });
-test("touch swipes change main sections, preserve manual selection, and stop at boundaries", async ({
+test("synthetic touch events change main sections, preserve manual selection, and stop at boundaries", async ({
   page,
 }) => {
   await page.route("**/api/**", (route) =>
@@ -331,32 +332,30 @@ test("touch swipes change main sections, preserve manual selection, and stop at 
   const swipe = async (dx: number, dy = 0) =>
     page.locator("#sdk-panel").evaluate(
       (panel, { dx, dy }) => {
-        const touch = (x: number, y: number) =>
-          new Touch({ identifier: 1, target: panel, clientX: x, clientY: y });
+        const touch = (x: number, y: number) => ({
+          identifier: 1,
+          target: panel,
+          clientX: x,
+          clientY: y,
+        });
         const initial = touch(200, 100),
           final = touch(200 + dx, 100 + dy);
-        panel.dispatchEvent(
-          new TouchEvent("touchstart", {
-            bubbles: true,
-            touches: [initial],
-            changedTouches: [initial],
-          }),
-        );
-        panel.dispatchEvent(
-          new TouchEvent("touchmove", {
-            bubbles: true,
-            cancelable: true,
-            touches: [final],
-            changedTouches: [final],
-          }),
-        );
-        panel.dispatchEvent(
-          new TouchEvent("touchend", {
-            bubbles: true,
-            touches: [],
-            changedTouches: [final],
-          }),
-        );
+        // Exercise the actual touch listeners without browser-specific constructors.
+        const dispatch = (
+          type: string,
+          touches: ReturnType<typeof touch>[],
+          changedTouches: ReturnType<typeof touch>[],
+        ) => {
+          const event = new Event(type, { bubbles: true, cancelable: true });
+          Object.defineProperties(event, {
+            touches: { value: touches },
+            changedTouches: { value: changedTouches },
+          });
+          panel.dispatchEvent(event);
+        };
+        dispatch("touchstart", [initial], [initial]);
+        dispatch("touchmove", [final], [final]);
+        dispatch("touchend", [], [final]);
       },
       { dx, dy },
     );
@@ -391,7 +390,12 @@ test.describe("native touch arbitration", () => {
   });
   test("horizontal filters scroll while content swipes switch sections and vertical gestures scroll", async ({
     page,
+    browserName,
   }) => {
+    test.skip(
+      browserName !== "chromium",
+      "Native gesture injection requires Chromium CDP",
+    );
     let releaseStatus!: () => void;
     const statusResponse = new Promise<void>((resolve) => {
       releaseStatus = resolve;
