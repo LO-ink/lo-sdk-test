@@ -65,6 +65,17 @@ import {
   isManuallyRetired,
   lastRunKey,
 } from "./manual-recovery.ts";
+import {
+  readArchivedHistory,
+  oldestOwnedArchive,
+  retireHistory,
+  type HistoricalReport,
+  readHistorical,
+  historicalExport,
+  preserveHistory,
+  assertHistoryArchived,
+  assertHistoryOwner,
+} from "./history.ts";
 import { recoverRun, recoveryPending } from "./recovery.ts";
 import {
   dependencyKey,
@@ -118,6 +129,7 @@ export function App() {
     useState<ThemePreference>("host");
   const themePreferenceRef = useRef(themePreference);
   themePreferenceRef.current = themePreference;
+  const explicitThemeChange = useRef(false);
   const refreshAppearance = useRef<(() => void) | null>(null);
   useEffect(() => {
     refreshAppearance.current?.();
@@ -172,6 +184,165 @@ export function App() {
   const [pendingRecovery, setPendingRecovery] = useState<RecoveryTicket | null>(
     () => readRecovery(initialStorage, dependencies),
   );
+  const [history, setHistory] = useState(() => {
+    try {
+      return (
+        readHistorical(initialStorage, dependencies) ??
+        readArchivedHistory(storage, dependencies)
+      );
+    } catch {
+      return null;
+    }
+  });
+  const historicalAtMount = useRef(
+    Boolean(history && history.snapshot === mountedSnapshot),
+  );
+  const historyBusy = useRef(false);
+  const [archiveExport, setArchiveExport] = useState<HistoricalReport | null>(
+    null,
+  );
+  const [retireConfirmation, setRetireConfirmation] = useState(false);
+  const [historyWorking, setHistoryWorking] = useState(false);
+  const historyArchived = useRef(
+    Boolean(history && history.snapshot !== mountedSnapshot),
+  );
+  const preservingHistory = useRef(false);
+  const verifyHistoryIdentity = async () => {
+    const target = clientRef.current;
+    const owner = target ? deferredIdentity(target) : null;
+    if (!owner?.appId || !owner.userId)
+      throw new Error("Откройте отчёт из прежнего аккаунта в LO.");
+    const raw = target?.adapter.launchData;
+    if (!raw) throw new Error("Откройте отчёт из прежнего аккаунта в LO.");
+    const verified = await api<{
+      verified: boolean;
+      appId: string;
+      userId: string;
+    }>("verify-launch", { raw });
+    const live = createLoClient();
+    try {
+      if (
+        live?.adapter.launchData !== raw ||
+        !sameOwner(
+          { owner },
+          live ? (deferredIdentity(live) ?? undefined) : undefined,
+        )
+      )
+        throw new Error(
+          "Аккаунт или приложение LO изменились. Откройте отчёт заново.",
+        );
+    } finally {
+      live?.dispose();
+    }
+    if (
+      !mounted.current ||
+      target !== clientRef.current ||
+      target.adapter.launchData !== raw ||
+      !sameOwner({ owner: owner! }, deferredIdentity(target) ?? undefined) ||
+      verified.verified !== true ||
+      verified.appId !== owner!.appId ||
+      verified.userId !== owner!.userId
+    )
+      throw new Error(
+        "Не удалось подтвердить прежний аккаунт и приложение LO.",
+      );
+    if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+      throw new Error(
+        "Сохранённый прогон изменился. Откройте приложение заново.",
+      );
+    return owner;
+  };
+  const verifyHistory = async () => {
+    if (!history) throw new Error("Прежний отчёт недоступен");
+    assertHistoryOwner(
+      history,
+      clientRef.current
+        ? (deferredIdentity(clientRef.current) ?? undefined)
+        : undefined,
+    );
+    const owner = await verifyHistoryIdentity();
+    assertHistoryOwner(history, owner);
+    if (historyArchived.current) assertHistoryArchived(storage, history);
+    else if (expectedSnapshot.current !== history.snapshot)
+      throw new Error("Прежний отчёт изменился");
+    return owner;
+  };
+  const exportArchiveForRetirement = async () => {
+    if (historyBusy.current || runController.current) return;
+    historyBusy.current = true;
+    setHistoryWorking(true);
+    try {
+      const owner = await verifyHistoryIdentity();
+      const archived = oldestOwnedArchive(storage, dependencies, owner);
+      if (!archived)
+        throw new Error(
+          "Нет доступных архивных копий для удаления. Прежний отчёт будет сохранён в архиве при новом запуске. Если здесь есть копии другого аккаунта, откройте его в LO.",
+        );
+      setArchiveExport(archived);
+      setReportText(historicalExport(archived, owner));
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error ? error.message : "Архив недоступен",
+      );
+    } finally {
+      historyBusy.current = false;
+      setHistoryWorking(false);
+    }
+  };
+  const finishArchiveRetirement = async () => {
+    setRetireConfirmation(false);
+    if (!archiveExport || historyBusy.current || runController.current) return;
+    historyBusy.current = true;
+    setHistoryWorking(true);
+    try {
+      const owner = await verifyHistoryIdentity();
+      retireHistory(
+        storage,
+        archiveExport,
+        owner,
+        expectedSnapshot.current,
+        true,
+      );
+      if (history?.snapshot === archiveExport.snapshot) {
+        if (expectedSnapshot.current === history.snapshot)
+          historyArchived.current = false;
+        else {
+          setHistory(readArchivedHistory(storage, dependencies));
+          historyArchived.current = true;
+        }
+      }
+      setArchiveExport(null);
+      setExportMessage(
+        "Архивная копия удалена по вашему подтверждению. Текущий прогон и результаты проверок не изменены.",
+      );
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error
+          ? error.message
+          : "Не удалось удалить архивную копию",
+      );
+    } finally {
+      historyBusy.current = false;
+      setHistoryWorking(false);
+    }
+  };
+  const exportHistory = async () => {
+    if (!history || historyBusy.current || runController.current) return;
+    historyBusy.current = true;
+    setHistoryWorking(true);
+    try {
+      const owner = await verifyHistory();
+      setArchiveExport(null);
+      setReportText(historicalExport(history, owner));
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error ? error.message : "Прежний отчёт недоступен",
+      );
+    } finally {
+      historyBusy.current = false;
+      setHistoryWorking(false);
+    }
+  };
   const pendingRecoveryRef = useRef(pendingRecovery);
   pendingRecoveryRef.current = pendingRecovery;
   const [retiredAtMount] = useState(() => {
@@ -556,7 +727,7 @@ export function App() {
     }
   };
   const startAll = async (resume = false) => {
-    if (persistence.unavailable) return;
+    if (persistence.unavailable || historyBusy.current) return;
     if (
       runController.current ||
       deferredBusy.current ||
@@ -603,6 +774,27 @@ export function App() {
         error instanceof Error ? error.message : persistenceUnavailable,
       );
       return;
+    }
+    const displacedHistory =
+      !resume && history?.snapshot === expectedSnapshot.current
+        ? history
+        : null;
+    if (displacedHistory) {
+      try {
+        if (!historyArchived.current) {
+          preserveHistory(storage, displacedHistory);
+          historyArchived.current = true;
+        }
+        assertHistoryArchived(storage, displacedHistory);
+        preservingHistory.current = true;
+      } catch (error) {
+        setExportMessage(
+          error instanceof Error
+            ? error.message
+            : "Не удалось сохранить прежний отчёт",
+        );
+        return;
+      }
     }
     const previous = resume ? automatedRunRef.current : null;
     if (resume && !canResume(previous)) return;
@@ -740,6 +932,7 @@ export function App() {
           )
             throw new Error("Архив ручной очистки изменился");
         }
+        if (displacedHistory) assertHistoryArchived(storage, displacedHistory);
         expectedSnapshot.current = saveRun(
           storage,
           report,
@@ -854,6 +1047,7 @@ export function App() {
         throw new Error(
           "Сохранённый прогон изменился. Откройте приложение заново перед запуском.",
         );
+      if (displacedHistory) assertHistoryArchived(storage, displacedHistory);
       try {
         audio.current ??= new AudioContext();
       } catch {
@@ -988,7 +1182,14 @@ export function App() {
       );
       // Theme events remain observable during colour tests; only our automatic
       // writeback must stop, otherwise it would overwrite the bridge under test.
-      if (testingAppearance.current || pendingRecoveryRef.current) return;
+      if (
+        testingAppearance.current ||
+        pendingRecoveryRef.current ||
+        (historicalAtMount.current &&
+          !preservingHistory.current &&
+          !explicitThemeChange.current)
+      )
+        return;
       // LO owns the area below the WebView, including the home indicator.
       // Match it to the page so the document doesn't end at a white strip.
       const pageColor =
@@ -1023,7 +1224,7 @@ export function App() {
     };
     refreshAppearance.current = appearance;
     appearance();
-    if (!pendingRecoveryRef.current) {
+    if (!pendingRecoveryRef.current && !historicalAtMount.current) {
       try {
         audio.current = new AudioContext();
         void audio.current
@@ -1396,35 +1597,78 @@ export function App() {
         {...swipe}
       >
         {tab === "UI" && (
-          <UiPage theme={themePreference} onThemeChange={setThemePreference} />
+          <UiPage
+            theme={themePreference}
+            onThemeChange={(value) => {
+              explicitThemeChange.current = true;
+              setThemePreference(value);
+            }}
+          />
         )}
         {tab === "Секретарь" && (
           <SecretaryPage authenticated={authenticated} request={api} />
         )}
         {tab === "Все проверки" && (
-          <RunPage
-            report={automatedRun}
-            persistenceUnavailable={persistenceFailed}
-            pendingRecovery={pendingRecovery}
-            recovering={recovering}
-            onRecover={() => void restorePrevious()}
-            onManualCleanup={finishManualCleanup}
-            interaction={interaction}
-            starting={startingRun}
-            stopping={stoppingRun}
-            exporting={exporting}
-            onStart={() => void startAll()}
-            onResume={() => void startAll(true)}
-            resuming={resumingRun}
-            onStop={() => {
-              setStoppingRun(Boolean(runController.current));
-              runController.current?.abort();
-              interactionController.current?.abort();
-            }}
-            onExport={() => void exportReport()}
-            onDeferred={runDeferred}
-            identity={client ? deferredIdentity(client) : null}
-          />
+          <>
+            {history && !pendingRecovery && !runningAll && (
+              <Surface padding={3} aria-label="Прежний отчёт">
+                <Stack gap={2}>
+                  <Text size="label">Сохранён прежний отчёт</Text>
+                  <Text size="caption" tone="secondary">
+                    {history.reason === "expired"
+                      ? "Срок продолжения истёк."
+                      : "Версии SDK или план проверки изменились."}{" "}
+                    Продолжить прежнюю проверку нельзя. Новый запуск сохранит её
+                    в локальном архиве.
+                  </Text>
+                  <Text size="caption" tone="secondary">
+                    Для доступа нужен тот же аккаунт и приложение LO. Результаты
+                    прежнего отчёта не подтверждают текущие SDK.
+                  </Text>
+                  <Button
+                    variant="secondary"
+                    disabled={historyWorking}
+                    onClick={() => void exportHistory()}
+                  >
+                    {historyWorking
+                      ? "Проверяем доступ…"
+                      : "Сохранить прежний отчёт"}
+                  </Button>
+                  <Button
+                    variant="quiet"
+                    disabled={historyWorking || persistenceFailed}
+                    onClick={() => void exportArchiveForRetirement()}
+                  >
+                    Освободить место в архиве
+                  </Button>
+                </Stack>
+              </Surface>
+            )}
+            <RunPage
+              report={automatedRun}
+              persistenceUnavailable={persistenceFailed}
+              pendingRecovery={pendingRecovery}
+              recovering={recovering}
+              onRecover={() => void restorePrevious()}
+              onManualCleanup={finishManualCleanup}
+              interaction={interaction}
+              starting={startingRun}
+              startBlocked={historyWorking}
+              stopping={stoppingRun}
+              exporting={exporting}
+              onStart={() => void startAll()}
+              onResume={() => void startAll(true)}
+              resuming={resumingRun}
+              onStop={() => {
+                setStoppingRun(Boolean(runController.current));
+                runController.current?.abort();
+                interactionController.current?.abort();
+              }}
+              onExport={() => void exportReport()}
+              onDeferred={runDeferred}
+              identity={client ? deferredIdentity(client) : null}
+            />
+          </>
         )}
         {tab === "Данные запуска" && (
           <>
@@ -1917,6 +2161,14 @@ export function App() {
           }}
         />
       )}
+      {retireConfirmation && (
+        <ActionConfirmation
+          title="Удалить архивную копию?"
+          detail="Подтвердите, что вы сохранили JSON отчёта. Будет удалена только эта архивная копия вашего аккаунта; текущий прогон останется без изменений."
+          onCancel={() => setRetireConfirmation(false)}
+          onConfirm={() => void finishArchiveRetirement()}
+        />
+      )}
       {reportText && (
         <Dialog
           ref={reportDialog}
@@ -1938,6 +2190,18 @@ export function App() {
               value={reportText}
             />
             <div className="actions">
+              {archiveExport && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    reportDialog.current?.close();
+                    setReportText("");
+                    setRetireConfirmation(true);
+                  }}
+                >
+                  Копия сохранена — удалить из архива
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 onClick={() => {

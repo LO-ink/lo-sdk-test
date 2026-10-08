@@ -127,7 +127,7 @@ function validRecovery(value: unknown, runId: string): boolean {
     return true;
   });
 }
-function readStoredRun(
+export function readStoredRun(
   storage: Storage,
   dependencies: string,
   now: number,

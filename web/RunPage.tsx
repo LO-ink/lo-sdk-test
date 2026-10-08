@@ -102,6 +102,7 @@ function RunFeed({ checks }: { checks: CheckResult[] }) {
 export function RunPage({
   report,
   persistenceUnavailable = false,
+  startBlocked = false,
   interaction,
   starting,
   stopping,
@@ -118,6 +119,7 @@ export function RunPage({
   onRecover,
   onManualCleanup,
 }: {
+  startBlocked?: boolean;
   pendingRecovery?: RecoveryTicket | null;
   recovering?: boolean;
   onRecover?: () => void;
@@ -244,7 +246,9 @@ export function RunPage({
         <Stack gap={4}>
           <Button
             className="run-start"
-            disabled={stopping || (!active && Boolean(interaction))}
+            disabled={
+              startBlocked || stopping || (!active && Boolean(interaction))
+            }
             onClick={active ? onStop : resumable ? onResume : onStart}
           >
             {stopping
