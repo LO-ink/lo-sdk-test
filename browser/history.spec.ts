@@ -120,6 +120,31 @@ for (const mode of [
     );
     await page.goto("/");
     await expect(page.getByText("Сохранён прежний отчёт")).toBeVisible();
+    if (mode === "retain") {
+      for (const width of [320, 402]) {
+        await page.setViewportSize({ width, height: 874 });
+        const geometry = await page.evaluate(() => {
+          const history = document.querySelector(
+            '[aria-label="Прежний отчёт"]',
+          )!;
+          const launch = document.querySelector(
+            '[aria-label="Запуск проверки"]',
+          )!;
+          return {
+            gap:
+              launch.getBoundingClientRect().top -
+              history.getBoundingClientRect().bottom,
+            token: Number.parseFloat(
+              getComputedStyle(history).getPropertyValue("--lo-space-4"),
+            ),
+          };
+        });
+        expect(geometry.token).toBeGreaterThan(0);
+        expect(geometry.gap).toBeCloseTo(geometry.token, 1);
+      }
+      await page.setViewportSize({ width: 320, height: 740 });
+    }
+
     await expect(
       page.getByText("Срок продолжения истёк.", { exact: false }),
     ).toBeVisible();
@@ -276,3 +301,26 @@ for (const mode of [
     expect(errors).toEqual([]);
   });
 }
+
+test("fresh launch keeps its original position without a historical report", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: "Начать проверку", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Прежний отчёт", exact: true }),
+  ).toHaveCount(0);
+  for (const width of [320, 402]) {
+    await page.setViewportSize({ width, height: 874 });
+    const offset = await page.evaluate(() => {
+      const panel = document.querySelector("#sdk-panel")!;
+      const launch = document.querySelector('[aria-label="Запуск проверки"]')!;
+      return (
+        launch.getBoundingClientRect().top - panel.getBoundingClientRect().top
+      );
+    });
+    expect(offset).toBeCloseTo(0, 1);
+  }
+});

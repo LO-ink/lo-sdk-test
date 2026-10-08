@@ -1609,7 +1609,7 @@ export function App() {
           <SecretaryPage authenticated={authenticated} request={api} />
         )}
         {tab === "Все проверки" && (
-          <>
+          <Stack gap={4}>
             {history && !pendingRecovery && !runningAll && (
               <Surface padding={3} aria-label="Прежний отчёт">
                 <Stack gap={2}>
@@ -1644,31 +1644,33 @@ export function App() {
                 </Stack>
               </Surface>
             )}
-            <RunPage
-              report={automatedRun}
-              persistenceUnavailable={persistenceFailed}
-              pendingRecovery={pendingRecovery}
-              recovering={recovering}
-              onRecover={() => void restorePrevious()}
-              onManualCleanup={finishManualCleanup}
-              interaction={interaction}
-              starting={startingRun}
-              startBlocked={historyWorking}
-              stopping={stoppingRun}
-              exporting={exporting}
-              onStart={() => void startAll()}
-              onResume={() => void startAll(true)}
-              resuming={resumingRun}
-              onStop={() => {
-                setStoppingRun(Boolean(runController.current));
-                runController.current?.abort();
-                interactionController.current?.abort();
-              }}
-              onExport={() => void exportReport()}
-              onDeferred={runDeferred}
-              identity={client ? deferredIdentity(client) : null}
-            />
-          </>
+            <div>
+              <RunPage
+                report={automatedRun}
+                persistenceUnavailable={persistenceFailed}
+                pendingRecovery={pendingRecovery}
+                recovering={recovering}
+                onRecover={() => void restorePrevious()}
+                onManualCleanup={finishManualCleanup}
+                interaction={interaction}
+                starting={startingRun}
+                startBlocked={historyWorking}
+                stopping={stoppingRun}
+                exporting={exporting}
+                onStart={() => void startAll()}
+                onResume={() => void startAll(true)}
+                resuming={resumingRun}
+                onStop={() => {
+                  setStoppingRun(Boolean(runController.current));
+                  runController.current?.abort();
+                  interactionController.current?.abort();
+                }}
+                onExport={() => void exportReport()}
+                onDeferred={runDeferred}
+                identity={client ? deferredIdentity(client) : null}
+              />
+            </div>
+          </Stack>
         )}
         {tab === "Данные запуска" && (
           <>
