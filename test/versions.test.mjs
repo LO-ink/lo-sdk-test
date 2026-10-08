@@ -1,17 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createVersionChecker } from "../server/versions.mjs";
 import { createHandler } from "../server/app.mjs";
 const source = "a".repeat(40),
   latest = "b".repeat(40);
-const item = (name, repository = "lo-platform-adapters") => ({
+const item = (name, repository = "lo-ui") => ({
   name:
     repository === "lo-bot-sdk"
       ? "@lo-ink/bot-sdk"
       : name === "two"
-        ? "@lo-ink/adapter-lo-legacy"
-        : "@lo-ink/adapter-webapp-compat",
+        ? "@lo-ink/ui"
+        : "@lo-ink/design-tokens",
   repository,
   version: "0.3.0",
   sourceCommit: source,
@@ -25,18 +26,18 @@ const tree = (changed = false) => ({
   truncated: false,
   tree: [
     {
-      path: "packages/compat",
+      path: "packages/design-tokens",
       type: "tree",
       mode: "040000",
       sha: changed ? latest : source,
     },
     {
-      path: "packages/lo-legacy",
+      path: "packages/ui",
       type: "tree",
       mode: "040000",
       sha: changed ? latest : source,
     },
-    ...sharedBuildPaths.map((path) => ({
+    ...["LICENSE", ...sharedBuildPaths].map((path) => ({
       path,
       type: "blob",
       mode: "100644",
@@ -56,15 +57,6 @@ const workspaceLock = () => ({
     "": {
       workspaces: ["packages/*", "apps/*"],
       devDependencies: { typescript: "5.9.3" },
-    },
-    "packages/compat": {
-      name: "@lo-ink/adapter-webapp-compat",
-      version: "0.20.2",
-    },
-    "packages/lo-legacy": {
-      name: "@lo-ink/adapter-lo-legacy",
-      version: "0.3.1",
-      dependencies: { "@lo-ink/adapter-webapp-compat": "0.20.2" },
     },
     "packages/ui": {
       name: "@lo-ink/ui",
@@ -176,7 +168,7 @@ test("unrelated monorepo changes do not mark unchanged package trees as updates"
       if (url.includes("/git/trees/")) {
         const body = tree();
         body.tree.push({
-          path: "packages/lo",
+          path: "apps/gallery",
           type: "tree",
           mode: "040000",
           sha: url.includes(latest) ? latest : source,
@@ -200,8 +192,8 @@ test("unrelated monorepo changes do not mark unchanged package trees as updates"
   assert.deepEqual(
     result.packages.map((p) => p.comparedPaths),
     [
-      ["packages/compat", ...sharedBuildPaths],
-      ["packages/lo-legacy", ...sharedBuildPaths],
+      ["packages/design-tokens", "LICENSE", ...sharedBuildPaths],
+      ["packages/ui", "LICENSE", ...sharedBuildPaths],
     ],
   );
   assert.equal(
@@ -295,7 +287,7 @@ test("JS SDK freshness excludes Go and workflow edits but includes current build
 });
 
 test("monorepo compiler and clean-build changes invalidate both dependent package scopes", async () => {
-  for (const changedPath of sharedBuildPaths) {
+  for (const changedPath of ["LICENSE", ...sharedBuildPaths]) {
     const check = createVersionChecker({
       loadBuild: async () => ({ packages: [item("one"), item("two")] }),
       fetch: async (url) => {
@@ -689,11 +681,20 @@ test("malformed Git lock blobs fail closed instead of claiming package freshness
 
 test("workspace dependency closure includes transitive local build inputs and shared blob requests", async () => {
   const before = workspaceLock();
-  before.packages["packages/compat"].devDependencies = {
-    "@lo-ink/ui": "0.3.1",
+  // Test-only private build input: UI -> tokens -> build-support, without a cycle.
+  before.packages["packages/design-tokens"].devDependencies = {
+    "@fixture/build-support": "1.0.0",
+  };
+  before.packages["packages/build-support"] = {
+    name: "@fixture/build-support",
+    version: "1.0.0",
+  };
+  before.packages["node_modules/@fixture/build-support"] = {
+    resolved: "packages/build-support",
+    link: true,
   };
   const after = structuredClone(before);
-  after.packages["packages/design-tokens"].version = "0.3.2";
+  after.packages["packages/build-support"].version = "1.0.1";
   let blobs = 0;
   const check = createVersionChecker({
     loadBuild: async () => ({ packages: [item("one"), item("two")] }),
@@ -724,4 +725,54 @@ test("workspace dependency closure includes transitive local build inputs and sh
     ["update", "update"],
   );
   assert.equal(blobs, 2);
+});
+
+test("current shipped receipt supports exactly its four SDK scopes; unconfigured metadata makes no request", async () => {
+  const build = JSON.parse(
+    readFileSync(new URL("../sdk-build.json", import.meta.url), "utf8"),
+  );
+  assert.deepEqual(build.packages.map((p) => p.name).sort(), [
+    "@lo-ink/bot-sdk",
+    "@lo-ink/design-tokens",
+    "@lo-ink/miniapp-sdk",
+    "@lo-ink/ui",
+  ]);
+  const urls = [];
+  const check = createVersionChecker({
+    loadBuild: async () => ({
+      packages: build.packages.map((p) => ({ ...p, sourceCommit: source })),
+    }),
+    fetch: async (url) => {
+      urls.push(url);
+      return response({ sha: source });
+    },
+  });
+  assert.deepEqual(
+    (await check()).packages.map((p) => p.state),
+    ["current", "current", "current", "current"],
+  );
+  assert.deepEqual(
+    urls.sort(),
+    ["lo-bot-sdk", "lo-miniapp-sdk", "lo-ui"].map(
+      (repo) => `https://api.github.com/repos/LO-ink/${repo}/commits/main`,
+    ),
+  );
+  let unconfiguredRequests = 0;
+  const unknown = createVersionChecker({
+    loadBuild: async () => ({
+      packages: [
+        { ...item("one"), name: "@fixture/unconfigured" },
+        item("one", "foreign-repo"),
+      ],
+    }),
+    fetch: async () => {
+      unconfiguredRequests++;
+      return response({ sha: source });
+    },
+  });
+  assert.deepEqual(
+    (await unknown()).packages.map((p) => p.state),
+    ["unknown", "unknown"],
+  );
+  assert.equal(unconfiguredRequests, 0);
 });

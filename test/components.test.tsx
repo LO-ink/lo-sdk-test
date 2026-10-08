@@ -206,7 +206,7 @@ test("empty run shows an actionable start and leaves unavailable SDK versions un
   await waitFor(() =>
     assert.ok(page.getByText("GitHub недоступен. Актуальность не проверена.")),
   );
-  assert.equal(page.queryByText("Актуальна"), null);
+  assert.equal(page.queryByText("Совпадает с main"), null);
 });
 
 test("manual checks without a host cannot send messages and display a failed server check", async () => {
@@ -1940,3 +1940,41 @@ for (const replaced of [false, true]) {
     }
   });
 }
+
+test("SDK status describes dated source comparison, preserving receipt identity and unavailable states", async () => {
+  const { SdkVersions } = await import("../web/SdkVersions.tsx");
+  const { default: build } = await import("../sdk-build.json", {
+    with: { type: "json" },
+  });
+  let respond!: (response: Response) => void;
+  globalThis.fetch = () =>
+    new Promise<Response>((resolve) => {
+      respond = resolve;
+    });
+  const page = render(<SdkVersions />);
+  assert.equal(page.getAllByText("Сравниваем исходники…").length, 5);
+  const checkedAt = "2026-10-08T12:34:00Z";
+  respond(
+    Response.json({
+      basis: "github-main",
+      checkedAt,
+      packages: build.packages.map((p, i) => ({
+        ...p,
+        state: ["current", "update", "ahead", "current"][i],
+        // A different receipt cannot lend its source-comparison result to this build.
+        sourceCommit: i === 3 ? "0".repeat(40) : p.sourceCommit,
+      })),
+    }),
+  );
+  await waitFor(() => assert.ok(page.getByText("Совпадает с main")));
+  for (const label of ["Изменения в main", "Новее main", "Не проверена"])
+    assert.ok(page.getByText(label));
+  assert.equal(
+    page.getByRole("status").textContent,
+    `Сравнение исходников с main на GitHub · ${new Date(checkedAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`,
+  );
+  assert.doesNotMatch(
+    page.container.textContent ?? "",
+    /Есть обновление|Актуальна|Проверяем обновления/,
+  );
+});

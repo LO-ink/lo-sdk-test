@@ -15,8 +15,8 @@ type VersionCheck = {
   }[];
 };
 const labels = {
-  current: "Актуальна",
-  update: "Есть обновление",
+  current: "Совпадает с main",
+  update: "Изменения в main",
   ahead: "Новее main",
   unknown: "Не проверена",
 };
@@ -99,7 +99,7 @@ export function SdkVersions() {
                 }
                 className="version-status"
               >
-                {loading ? "Проверяем…" : labels[state]}
+                {loading ? "Сравниваем исходники…" : labels[state]}
               </Text>
             </li>
           );
@@ -112,10 +112,10 @@ export function SdkVersions() {
         role="status"
       >
         {loading ? (
-          "Проверяем обновления…"
+          "Сравниваем исходники…"
         ) : check ? (
           <>
-            Сравнение с main на GitHub ·{" "}
+            Сравнение исходников с main на GitHub ·{" "}
             {new Date(check.checkedAt).toLocaleString("ru-RU", {
               day: "2-digit",
               month: "2-digit",
