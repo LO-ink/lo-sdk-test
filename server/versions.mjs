@@ -17,14 +17,6 @@ const monorepoBuildPaths = [
 const packageSources = new Map([
   ["@lo-ink/miniapp-sdk", ["lo-miniapp-sdk", rootPackagePaths]],
   ["@lo-ink/bot-sdk", ["lo-bot-sdk", rootPackagePaths]],
-  [
-    "@lo-ink/adapter-lo-legacy",
-    ["lo-platform-adapters", ["packages/lo-legacy", ...monorepoBuildPaths]],
-  ],
-  [
-    "@lo-ink/adapter-webapp-compat",
-    ["lo-platform-adapters", ["packages/compat", ...monorepoBuildPaths]],
-  ],
   ["@lo-ink/ui", ["lo-ui", ["packages/ui", "LICENSE", ...monorepoBuildPaths]]],
   [
     "@lo-ink/design-tokens",
