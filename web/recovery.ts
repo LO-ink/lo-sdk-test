@@ -27,6 +27,10 @@ export async function recoverRun(
 ): Promise<RecoveryTicket> {
   signal.throwIfAborted();
   assertRecoveryCurrent(storage, ticket);
+  if (!ticket.owner)
+    throw new Error(
+      "Владелец прежнего прогона неизвестен. Нужна ручная очистка; запись восстановления сохранена.",
+    );
   for (const bridge of bridges) {
     if (!bridge.client || !ticket.recovery[bridge.id]) continue;
     const owner = deferredIdentity(bridge.client);
@@ -43,9 +47,14 @@ export async function recoverRun(
     if (!recovery.written.length && !recovery.mutations.length) continue;
     assertRecoveryCurrent(storage, current);
     cleanupSignal.throwIfAborted();
-    const bridge = bridges.find((item) => item.id === id);
+    const bridge =
+      id === "native" ? bridges.find((item) => item.id === id) : undefined;
     if (!bridge?.client) {
-      errors.push(`${id}: мост недоступен`);
+      errors.push(
+        id === "compat"
+          ? "Прежний маршрут compat больше не поддерживается. Нужна ручная очистка в прежнем приложении; запись восстановления сохранена."
+          : `${id}: мост недоступен`,
+      );
       continue;
     }
     // Cleanup catches individual failures, so fence every host operation too.

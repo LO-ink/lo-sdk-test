@@ -1,14 +1,16 @@
 # LO SDK Test
 
-A mini-app for checking LO SDKs, native bridges and the Bot API. Hosted at [sdk-test.zay.media](https://sdk-test.zay.media).
+A mini-app for checking LO SDKs, the native host and the Bot API. Hosted at [sdk-test.zay.media](https://sdk-test.zay.media).
 
-Select the bridge for assisted scenarios, then start the guided run. Automatic checks finish for both bridges before permissions and device confirmations begin. Assisted scenarios use the selected bridge for that run; the other bridge remains unverified for those effects. Shared system-theme changes retain separate observations through both bridges. Download the resulting report after restoration. Audio, vibration, colors and gestures require confirmation of the observed device effect. A successful API response alone does not establish that effect. Skipped checks remain unverified. The manual tab runs individual methods. The UI tab shows all seventeen published UI primitives, including disabled, loading, validation, icon and typography states. Its examples work locally without bridge or Bot API calls; the theme selector applies to the whole application.
+Start the guided run. Automatic checks finish before permissions and device confirmations begin. All host checks use LO’s native SDK connection. Download the resulting report after restoration. Audio, vibration, colors and gestures require confirmation of the observed device effect. A successful API response alone does not establish that effect. Skipped checks remain unverified. The manual tab runs individual methods. The UI tab shows all seventeen published UI primitives, including disabled, loading, validation, icon and typography states. Its examples work locally without bridge or Bot API calls; the theme selector applies to the whole application.
 
 A stopped run offers Continue and a separate Start over action. Completed results, run identity and progress stay intact, including after reopening. Continuation verifies a fresh session and requests fresh bot consent in the assisted phase when unfinished bot writes need it; it never restores permission from browser storage. Run-owned cleanup state is saved before mutations so interrupted storage and screen changes can be restored before continuing. An unresolved restoration is shown explicitly and cannot be discarded by starting another run.
 
 Progress is retained for 24 hours and is bound to the SDK dependency set, the exact check plan and the same LO app/user. Interrupted bot writes require a specific retry choice because a lost response does not prove that no message was sent. Missing server-owned file/message references remain unverified instead of repeating completed sends. Reports from a different SDK dependency set require a fresh run. Deferred delivery tickets remain bound to their original build.
 
-Native and compatibility bridges retain independent results. To confirm device effects through the other bridge, select it for a new run. The report records the selected route, unverified scenarios and platform limitations.
+The main application uses only LO’s native connection. Older reports may retain cleanup obligations for a removed compatibility route. These remain explicitly unresolved, with the original storage key and settings shown for manual cleanup in the original app/account; they are never replayed through the native connection or silently discarded. Valid old cleanup records without an app/user identity are also retained for manual resolution, with automatic cleanup blocked.
+
+If browser storage access or a checkpoint write fails, the app remains usable for SDK browsing and manual checks, but automatic runs and recovery stop. In-memory results are not presented as durably saved cleanup. Restore storage permission and reopen the app before continuing.
 
 ## Local development
 
@@ -105,11 +107,7 @@ for report disclosures, tables, file timestamps and page structure.
 The [dedicated Secretary flow](docs/secretary.md) verifies owner-scoped incoming,
 review draft and server sending evidence without sharing a working bot consumer.
 
-Native LO uses `createLoClient` from Mini App SDK 0.22 and the HTTP transport
-from Bot SDK 0.5. The application has no dependency on native compatibility
-re-export packages. The separately selected WebApp compatibility bridge retains
-its explicit adapters. Resume remains scoped to the recorded bridge/dependency
-set; native SDK version changes do not relabel old results as newly tested.
+LO uses `createLoClient` from Mini App SDK and the HTTP transport from Bot SDK. The application has no platform-adapter dependencies. Resume remains scoped to the recorded dependency set; SDK version changes do not relabel old results as newly tested.
 
 The architecture gate parses application CSS and rejects direct typography,
 control appearance and shared SDK selector overrides. Layout, host tokens and
@@ -120,3 +118,22 @@ tabular report numbers remain application responsibilities.
 The main sections support horizontal touch/pen swipes and shared UI SDK tabs. Swipes leave text fields, actions and horizontally scrolling tab/filter rows alone; they do not leave an active guided run. Manual section selection is retained when returning from the gallery. Whole filter labels scroll horizontally on narrow screens.
 
 Launch details show every typed SDK field without raw launch strings or signature credentials. LO interface language comes only from the optional native host snapshot; signed user language is displayed separately. Missing interface language on an older LO host requires a client update. An absent start parameter is normal for launches without one. Signature status changes only after server verification.
+
+## External manual cleanup
+
+Old unsupported-route or unknown-owner cleanup records remain blocked until their
+obligations are completed. The recovery panel exposes a copyable full JSON ticket,
+including the original owner, storage keys, affected buttons and original settings.
+Only explicit cleanup fields are exported; unrelated legacy fields and raw stored
+snapshots remain private to the local archive.
+A user who has completed every listed obligation in the original context can
+explicitly attest to external manual cleanup. This is unverified user testimony,
+never an automatic cleanup pass or evidence for the current SDK build. Mixed
+records with owned native obligations must complete native recovery first.
+
+An immutable local archive retains the exact original snapshot before the app
+logically retires it. The active snapshot is not removed; only an exact archived
+match permits a new run. Changed records, failed persistence, archive collisions,
+or exhausted archive limits leave new runs blocked. Archives are capped at 20
+records and 8 MiB without eviction. Local storage uses optimistic snapshot checks,
+not atomic cross-tab transactions; use one active SDK Test tab.

@@ -5,7 +5,6 @@
  * mini app looks like LO before any host says a word. A host that does send
  * `themeParams` wins — that is the whole point of the contract.
  */
-export type Provider = "telegram" | "lo";
 export type Scheme = "light" | "dark";
 export type ThemePreference = "host" | Scheme;
 export type ThemeParams = Record<string, string | undefined>;
@@ -43,23 +42,13 @@ function hex(value: string | undefined): string | undefined {
     : undefined;
 }
 
-/**
- * LO uses `bg_color` for the page and `secondary_bg_color` for cards. The
- * compatibility bridge uses a different mapping, so colours are resolved
- * according to the bridge rather than the parameter name alone.
- */
 export function palette(
-  provider: Provider,
   scheme: Scheme,
   params: ThemeParams = {},
 ): Record<string, string> {
   const base = lo[scheme];
-  const page =
-    provider === "lo" ? hex(params.bg_color) : hex(params.secondary_bg_color);
-  const surface =
-    provider === "lo"
-      ? hex(params.secondary_bg_color)
-      : (hex(params.section_bg_color) ?? hex(params.bg_color));
+  const page = hex(params.bg_color);
+  const surface = hex(params.secondary_bg_color);
   const action =
     hex(params.button_color) ?? hex(params.link_color) ?? base.accent;
   const actionText = hex(params.button_text_color) ?? base.accentInk;
@@ -89,11 +78,10 @@ export function palette(
 
 export function applyPalette(
   root: { style: { setProperty(name: string, value: string): void } },
-  provider: Provider,
   scheme: Scheme,
   params?: ThemeParams,
 ): void {
-  const values = palette(provider, scheme, params);
+  const values = palette(scheme, params);
   for (const name of Object.keys(values))
     root.style.setProperty(name, values[name]);
 }

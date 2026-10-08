@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { MiniAppClient } from "@lo-ink/miniapp-sdk";
 import type { Bridge } from "../web/bridges.ts";
-import type { RunReport } from "../web/runner.ts";
+import { canResume, type RunReport } from "../web/runner.ts";
 import { recoverRun, recoveryPending } from "../web/recovery.ts";
 import {
   lastRunKey,
@@ -111,7 +111,7 @@ test("SDK upgrades and expiry retain only owned validated cleanup intent, never 
   assert.equal(readRecovery(fresh.storage, "current", now), null);
 });
 
-test("cleanup-only loading rejects malformed, future, unowned or debt-free records", () => {
+test("cleanup-only loading rejects malformed, future or debt-free records", () => {
   const { storage } = fixture();
   const original = JSON.parse(storage.getItem(lastRunKey)!);
   for (const change of [
@@ -120,9 +120,6 @@ test("cleanup-only loading rejects malformed, future, unowned or debt-free recor
     },
     (saved: typeof original) => {
       saved.report.state = ["cancelled"];
-    },
-    (saved: typeof original) => {
-      saved.report.owner = undefined;
     },
     (saved: typeof original) => {
       saved.report.startedAt = new Date(now + 1).toISOString();
@@ -295,4 +292,86 @@ test("cancellation during a host call stops later effects and leaves conservativ
   );
   assert.equal(calls.length, 1);
   assert.ok(recoveryPending(readRecovery(storage, "current", now)));
+});
+
+test("removed-route cleanup remains visible and never executes through a native client, even with current dependencies", async () => {
+  const { storage, report } = fixture(60000, "current");
+  report.recovery = {
+    compat: {
+      key: `lo-sdk-run-${id}-compat`,
+      written: ["deviceStorage"],
+      mutations: ["setButton"],
+      original: {},
+    },
+  };
+  saveRun(storage, report, "old-app", "current");
+  assert.equal(readRun(storage, "current", now), null);
+  const ticket = readRecovery(storage, "current", now)!;
+  assert.ok(ticket);
+  const before = storage.getItem(lastRunKey);
+  const { host, calls } = bridge();
+  await assert.rejects(
+    recoverRun(ticket, [host], storage, signal(), () =>
+      assert.fail("No durable cleanup was performed"),
+    ),
+    /ручная очистка/,
+  );
+  assert.deepEqual(calls, []);
+  assert.equal(storage.getItem(lastRunKey), before);
+  assert.equal(recoveryPending(readRecovery(storage, "current", now)), true);
+});
+
+test("an old cleanup ledger without ownership remains manual-only instead of disappearing", async () => {
+  for (const route of ["native", "compat"] as const) {
+    const { storage, report } = fixture();
+    delete report.owner;
+    report.recovery = {
+      [route]: {
+        key: `lo-sdk-run-${id}-${route}`,
+        written: ["deviceStorage"],
+        mutations: [],
+        original: {},
+      },
+    };
+    saveRun(storage, report, "old-app", "old-dependencies");
+    const before = storage.getItem(lastRunKey);
+    const ticket = readRecovery(storage, "current", now)!;
+    assert.equal(ticket.owner, undefined);
+    assert.equal(recoveryPending(ticket), true);
+    const { host, calls } = bridge();
+    await assert.rejects(
+      recoverRun(ticket, [host], storage, signal(), () =>
+        assert.fail("Unknown identity cannot be restored automatically"),
+      ),
+      /Владелец.*неизвестен/,
+    );
+    assert.deepEqual(calls, []);
+    assert.equal(storage.getItem(lastRunKey), before);
+  }
+});
+
+test("recent current-build unknown-owner debt becomes manual-only while debt-free results stay visible", async () => {
+  const { storage, report } = fixture(60000, "current");
+  delete report.owner;
+  saveRun(storage, report, "current-app", "current");
+  const before = storage.getItem(lastRunKey);
+  assert.equal(canResume(report), false);
+  assert.equal(readRun(storage, "current", now), null);
+  const ticket = readRecovery(storage, "current", now)!;
+  assert.ok(ticket);
+  const { host, calls } = bridge();
+  await assert.rejects(
+    recoverRun(ticket, [host], storage, signal(), () =>
+      assert.fail("No owner"),
+    ),
+    /неизвестен/,
+  );
+  assert.deepEqual(calls, []);
+  assert.equal(storage.getItem(lastRunKey), before);
+  report.state = "finished";
+  report.recovery = {};
+  report.checks[1].state = "passed";
+  saveRun(storage, report, "current-app", "current");
+  assert.ok(readRun(storage, "current", now));
+  assert.equal(readRecovery(storage, "current", now), null);
 });

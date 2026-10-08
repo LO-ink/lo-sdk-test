@@ -9,10 +9,13 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL,
-    browserName: "chromium",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" } },
+    { name: "webkit", use: { browserName: "webkit" } },
+  ],
   webServer: {
     command: `npx vite --host 127.0.0.1 --port ${port} --strictPort`,
     url: baseURL,

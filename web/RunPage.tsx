@@ -1,12 +1,4 @@
-import {
-  Tabs,
-  Button,
-  Heading,
-  Text,
-  Progress,
-  Surface,
-  Stack,
-} from "@lo-ink/ui";
+import { Button, Heading, Text, Progress, Surface, Stack } from "@lo-ink/ui";
 import { useState } from "react";
 import { SdkVersions } from "./SdkVersions.tsx";
 import {
@@ -14,13 +6,15 @@ import {
   canResume,
   hasRecoveryDebt,
   summarize,
-  type AssistedBridge,
   type CheckResult,
   type RunReport,
 } from "./runner.ts";
+import { manualOnlyRecovery } from "./manual-recovery.ts";
+import { ManualRecovery } from "./ManualRecovery.tsx";
 import { RunInteraction } from "./RunInteraction.tsx";
 import { canRunDeferred, type DeferredIdentity } from "./deferred.ts";
 import type { RecoveryTicket } from "./run-storage.ts";
+import { persistenceUnavailable as persistenceMessage } from "./persistence.ts";
 import type { InteractionView } from "./interaction.ts";
 const labels = {
   pending: "Ожидает",
@@ -107,9 +101,7 @@ function RunFeed({ checks }: { checks: CheckResult[] }) {
 }
 export function RunPage({
   report,
-  assistedBridge = "native",
-  onBridgeChange,
-  availableBridgeIds = [],
+  persistenceUnavailable = false,
   interaction,
   starting,
   stopping,
@@ -124,14 +116,14 @@ export function RunPage({
   pendingRecovery = null,
   recovering = false,
   onRecover,
+  onManualCleanup,
 }: {
   pendingRecovery?: RecoveryTicket | null;
   recovering?: boolean;
   onRecover?: () => void;
+  onManualCleanup?: () => void;
   report: RunReport | null;
-  assistedBridge?: AssistedBridge;
-  onBridgeChange?: (bridge: AssistedBridge) => void;
-  availableBridgeIds?: AssistedBridge[];
+  persistenceUnavailable?: boolean;
   interaction: InteractionView | null;
   starting: boolean;
   stopping: boolean;
@@ -171,6 +163,14 @@ export function RunPage({
       (c) => !filters[filter] || c.state === filters[filter],
     ) ?? [];
   const groups = [...new Set(shown.map((c) => c.group))];
+  if (persistenceUnavailable)
+    return (
+      <section className="run-panel" aria-label="Сохранение недоступно">
+        <Text role="status" tone="danger">
+          {persistenceMessage}
+        </Text>
+      </section>
+    );
   if (pendingRecovery)
     return (
       <section
@@ -189,12 +189,52 @@ export function RunPage({
             Откройте прежний аккаунт и приложение LO. Недоступные ресурсы
             останутся в списке восстановления до успешной очистки.
           </Text>
-          <Button
-            disabled={recovering || Boolean(interaction) || !onRecover}
-            onClick={onRecover}
-          >
-            {recovering ? "Восстанавливаем…" : "Восстановить прежний прогон"}
-          </Button>
+          {Object.entries(pendingRecovery.recovery)
+            .filter(
+              ([id, entry]) =>
+                (!pendingRecovery.owner || id !== "native") &&
+                (entry.written.length || entry.mutations.length),
+            )
+            .map(([id, entry]) => (
+              <Stack key={id} gap={2}>
+                <Text tone="danger">
+                  {id !== "native"
+                    ? `Прежний маршрут ${id} больше не поддерживается. Автоматическая очистка через нативный мост невозможна.`
+                    : "Владелец прежнего прогона неизвестен. Автоматическая очистка недоступна."}{" "}
+                  Нужна ручная очистка в прежнем приложении и аккаунте; эта
+                  запись остаётся незавершённой.
+                </Text>
+                <Text size="caption">
+                  Ключ: {entry.key}. Хранилища:{" "}
+                  {entry.written.join(", ") || "нет"}. Настройки:{" "}
+                  {entry.mutations.join(", ") || "нет"}.
+                </Text>
+              </Stack>
+            ))}
+          <ManualRecovery
+            key={pendingRecovery.snapshot}
+            ticket={pendingRecovery}
+            disabled={recovering || Boolean(interaction)}
+            onAttest={onManualCleanup}
+          />
+          {!manualOnlyRecovery(pendingRecovery) && (
+            <Button
+              disabled={
+                recovering ||
+                Boolean(interaction) ||
+                !onRecover ||
+                !pendingRecovery.owner ||
+                !Object.entries(pendingRecovery.recovery).some(
+                  ([id, entry]) =>
+                    id === "native" &&
+                    (entry.written.length || entry.mutations.length),
+                )
+              }
+              onClick={onRecover}
+            >
+              {recovering ? "Восстанавливаем…" : "Восстановить прежний прогон"}
+            </Button>
+          )}
         </Stack>
       </section>
     );
@@ -202,41 +242,6 @@ export function RunPage({
     <>
       <section className="run-panel" aria-label="Запуск проверки">
         <Stack gap={4}>
-          {onBridgeChange && !active && !resumable && (
-            <Stack gap={2}>
-              <Text size="label">Мост для проверок с вашим участием</Text>
-              <Tabs
-                aria-label="Мост интерактивных проверок"
-                value={assistedBridge}
-                onValueChange={(value) =>
-                  onBridgeChange(value as AssistedBridge)
-                }
-                options={[
-                  {
-                    value: "native",
-                    label: "Нативный",
-                    disabled: !availableBridgeIds.includes("native"),
-                  },
-                  {
-                    value: "compat",
-                    label: "Совместимый",
-                    disabled: !availableBridgeIds.includes("compat"),
-                  },
-                ]}
-              />
-            </Stack>
-          )}
-          {onBridgeChange && (
-            <Text tone="secondary" size="caption">
-              Автоматически — оба моста. С вашим участием —{" "}
-              {((active || resumable) && report?.assistedBridge
-                ? report.assistedBridge
-                : assistedBridge) === "compat"
-                ? "совместимый"
-                : "нативный"}{" "}
-              мост.
-            </Text>
-          )}
           <Button
             className="run-start"
             disabled={stopping || (!active && Boolean(interaction))}
@@ -387,24 +392,12 @@ export function RunPage({
                 <Heading level={2}>
                   {report?.state === "cancelled"
                     ? "Проверка остановлена"
-                    : "Покрытие мостов"}
+                    : "Подтверждённые проверки LO"}
                 </Heading>
                 <Text tone="secondary" size="label">
-                  Подтверждено {confirmed} из {bridgeTotal} проверок мостов
+                  Подтверждено {confirmed} из {bridgeTotal} проверок LO
                 </Text>
               </Stack>
-            </div>
-            <div className="bridge-coverage">
-              {coverage.map((item) => (
-                <Text tone="secondary" size="label" key={item.bridge}>
-                  <Text as="span" size="caption">
-                    {item.bridge}
-                  </Text>
-                  <Text as="strong" weight="bold" size="label">
-                    {item.confirmed} / {item.total}
-                  </Text>
-                </Text>
-              ))}
             </div>
             <div className="run-counts">
               <Text as="span" size="caption">
@@ -434,16 +427,6 @@ export function RunPage({
             </div>
             <Stack gap={4}>
               <Stack gap={2}>
-                {report?.assistedBridge && (
-                  <Text tone="secondary" size="caption">
-                    С вашим участием проверялся{" "}
-                    {report.assistedBridge === "native"
-                      ? "нативный"
-                      : "совместимый"}{" "}
-                    мост. Невыполненные интерактивные сценарии другого моста
-                    остаются непроверенными.
-                  </Text>
-                )}
                 <Text tone="secondary" size="caption">
                   Пропуски и непроверенные эффекты снижают покрытие.
                   Синтетические тесты и ответы API без подтверждения эффекта его

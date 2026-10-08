@@ -23,7 +23,6 @@ import {
   type Capability,
   type MiniAppClient,
 } from "@lo-ink/miniapp-sdk";
-import { createWebAppAdapter } from "@lo-ink/adapter-webapp-compat";
 const id = "11111111-1111-4111-8111-111111111111";
 const dependencies = dependencyKey(sdkBuild.packages);
 const result = (id: string, state: CheckResult["state"]): CheckResult => ({
@@ -159,12 +158,13 @@ test("fresh prerequisite failure retains results, leaves remaining checks resuma
 test("reopening distinguishes interrupted actions from untouched future steps and keeps cleanup debt across two reloads", () => {
   const store = storage();
   const before = report();
+  before.owner = { appId: "app", userId: "42" };
   before.state = "running";
   before.checks[1].state = "running";
   before.checks.splice(2, 0, result("never", "pending"));
   before.checks.at(-1)!.state = "pending";
   before.recovery = Object.fromEntries(
-    ["native", "compat"].map((bridge) => [
+    ["native"].map((bridge) => [
       bridge,
       {
         key: `lo-sdk-run-${id}-${bridge}`,
@@ -438,7 +438,7 @@ test("native SDK upgrades and schema-less historical reports cannot relabel old 
 
 // Host fakes sit below the published SDK/adapters, so wire shapes and callback
 // normalization remain real rather than being replaced by permissive call mocks.
-function recoveryHost(bridge: "native" | "compat", initialFullscreen = false) {
+function recoveryHost(bridge: "native", initialFullscreen = false) {
   const state = { fullscreen: initialFullscreen, fail: false };
   const values = new Map<string, string>();
   const buttons = new Map<string, boolean>();
@@ -462,60 +462,8 @@ function recoveryHost(bridge: "native" | "compat", initialFullscreen = false) {
     if (state.fail) throw new Error("Host rejected restoration");
     state.fullscreen = enabled;
   };
-  const storage = (secure: boolean) => ({
-    setItem(
-      key: string,
-      value: string,
-      done: (error: null, value: boolean) => void,
-    ) {
-      values.set(key, value);
-      done(null, true);
-    },
-    getItem(
-      key: string,
-      done: (error: null, value: string | null, canRestore?: boolean) => void,
-    ) {
-      done(null, values.get(key) ?? null, secure ? false : undefined);
-    },
-    removeItem(key: string, done: (error: null, value: boolean) => void) {
-      values.delete(key);
-      done(null, true);
-    },
-  });
   let client: MiniAppClient;
-  if (bridge === "compat") {
-    client = createMiniAppClient(
-      createWebAppAdapter(
-        "fixture",
-        {
-          get isFullscreen() {
-            return state.fullscreen;
-          },
-          MainButton: {
-            setParams: (params: { is_visible: boolean }) =>
-              setButton("main", params.is_visible),
-          },
-          SecondaryButton: {
-            setParams: (params: { is_visible: boolean }) =>
-              setButton("secondary", params.is_visible),
-          },
-          BackButton: {
-            show: () => setButton("back", true),
-            hide: () => setButton("back", false),
-          },
-          SettingsButton: {
-            show: () => setButton("settings", true),
-            hide: () => setButton("settings", false),
-          },
-          requestFullscreen: () => fullscreen(true),
-          exitFullscreen: () => fullscreen(false),
-          SecureStorage: storage(true),
-          DeviceStorage: storage(false),
-        },
-        new Set(capabilities),
-      ),
-    );
-  } else {
+  {
     const listeners = new Set<(raw: string) => void>();
     const adapter = createNativeAdapter({
       LO: {
@@ -603,7 +551,7 @@ function recoveryHost(bridge: "native" | "compat", initialFullscreen = false) {
   return { state, values, buttons, calls, client, context };
 }
 
-for (const bridge of ["native", "compat"] as const) {
+for (const bridge of ["native"] as const) {
   test(`${bridge}: real SDK button cleanup handles every button and retries preserved crash debt`, async () => {
     const host = recoveryHost(bridge);
     try {
@@ -806,13 +754,13 @@ test("missing bridge cannot silently retire persisted button recovery", async ()
 });
 
 test("button checkpoints retain only unconfirmed targets when capabilities disappear, including old aggregate debt", async () => {
-  const host = recoveryHost("compat");
+  const host = recoveryHost("native");
   const limited = createMiniAppClient({
     ...host.client.adapter,
     capabilities: new Set<Capability>(["mainButton"]),
   });
   const original = {
-    key: `lo-sdk-run-${id}-compat`,
+    key: `lo-sdk-run-${id}-native`,
     written: [],
     mutations: ["setButton"],
     buttons: ["main", "secondary"] as ("main" | "secondary")[],
@@ -831,13 +779,14 @@ test("button checkpoints retain only unconfirmed targets when capabilities disap
     assert.deepEqual(suite.checkpoint().buttons, ["secondary"]);
     assert.deepEqual(suite.checkpoint().mutations, ["setButton"]);
     const restored = report();
-    restored.recovery = { compat: suite.checkpoint() };
+    restored.owner = { appId: "app", userId: "42" };
+    restored.recovery = { native: suite.checkpoint() };
     const store = storage();
     saveRun(store, restored, "fixture", dependencies);
     assert.deepEqual(readRun(store, dependencies)?.recovery, restored.recovery);
     const reopened = createSuite({
       ...host.context,
-      recovery: readRun(store, dependencies)!.recovery!.compat,
+      recovery: readRun(store, dependencies)!.recovery!.native,
     });
     await reopened.prepareResume(new AbortController().signal);
     assert.deepEqual(reopened.checkpoint().mutations, []);

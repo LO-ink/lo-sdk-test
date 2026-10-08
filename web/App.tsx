@@ -32,7 +32,6 @@ import {
   bridgeCoverage,
   runChecks,
   summarize,
-  type AssistedBridge,
   type Check,
   type RunReport,
 } from "./runner.ts";
@@ -44,7 +43,7 @@ import { version as appVersion } from "../package.json";
 import { beginAudio, type AudioStart } from "./audio.ts";
 import { createInteraction, type InteractionView } from "./interaction.ts";
 import { availableBridges } from "./bridges.ts";
-import { guidedBridgeCheck } from "./bridge-checks.ts";
+import { createRunPersistence, persistenceUnavailable } from "./persistence.ts";
 import { systemThemeChecks } from "./system-theme.ts";
 import { ActionConfirmation } from "./ActionConfirmation.tsx";
 import {
@@ -61,6 +60,11 @@ import {
   type DeferredTicket,
 } from "./deferred.ts";
 
+import {
+  attestManualCleanup,
+  isManuallyRetired,
+  lastRunKey,
+} from "./manual-recovery.ts";
 import { recoverRun, recoveryPending } from "./recovery.ts";
 import {
   dependencyKey,
@@ -104,11 +108,11 @@ export function App() {
   const [client, setClient] = useState<MiniAppClient | null>(null);
   const clientRef = useRef(client);
   clientRef.current = client;
-  const [assistedBridge, setAssistedBridge] =
-    useState<AssistedBridge>("native");
-  const [availableBridgeIds, setAvailableBridgeIds] = useState<
-    AssistedBridge[]
-  >([]);
+  const [persistence] = useState(() => createRunPersistence());
+  const storage = persistence.storage;
+  const [persistenceFailed, setPersistenceFailed] = useState(
+    persistence.unavailable,
+  );
   const [tab, setTab] = useState("Все проверки");
   const [themePreference, setThemePreference] =
     useState<ThemePreference>("host");
@@ -149,14 +153,37 @@ export function App() {
   const dialog = useRef<HTMLDialogElement>(null);
   const parameterInput = useRef<HTMLTextAreaElement>(null);
   const reportDialog = useRef<HTMLDialogElement>(null);
+  const [mountedSnapshot] = useState(() => {
+    try {
+      return storage.getItem(lastRunKey);
+    } catch {
+      return null;
+    }
+  });
+  const expectedSnapshot = useRef(mountedSnapshot);
+  const initialStorage = {
+    getItem: (key: string) =>
+      key === lastRunKey ? mountedSnapshot : storage.getItem(key),
+    setItem: storage.setItem,
+  };
   const [automatedRun, setAutomatedRun] = useState<RunReport | null>(() =>
-    readRun(localStorage, dependencies),
+    readRun(initialStorage, dependencies),
   );
   const [pendingRecovery, setPendingRecovery] = useState<RecoveryTicket | null>(
-    () => readRecovery(localStorage, dependencies),
+    () => readRecovery(initialStorage, dependencies),
   );
   const pendingRecoveryRef = useRef(pendingRecovery);
   pendingRecoveryRef.current = pendingRecovery;
+  const [retiredAtMount] = useState(() => {
+    try {
+      return mountedSnapshot && isManuallyRetired(storage, mountedSnapshot)
+        ? mountedSnapshot
+        : null;
+    } catch {
+      return null;
+    }
+  });
+  const retiredRecovery = useRef<string | null>(retiredAtMount);
   const [recovering, setRecovering] = useState(false);
   const automatedRunRef = useRef(automatedRun);
   automatedRunRef.current = automatedRun;
@@ -171,14 +198,25 @@ export function App() {
   const interactionController = useRef<AbortController | null>(null);
   const deferredBusy = useRef(false);
   const [deferredRevision, setDeferredRevision] = useState(0);
+  useEffect(
+    () =>
+      persistence.subscribe(() => {
+        setPersistenceFailed(true);
+        runController.current?.abort(new Error(persistenceUnavailable));
+        interactionController.current?.abort(new Error(persistenceUnavailable));
+      }),
+    [persistence],
+  );
   const finishDeferred = (
     ticket: DeferredTicket,
     result: Parameters<typeof applyDeferredResult>[2],
   ) => {
     if (!mounted.current) return;
     try {
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error("Сохранённый прогон изменился");
       const report = persistDeferredResult(
-        localStorage,
+        storage,
         automatedRunRef.current,
         ticket,
         result,
@@ -187,6 +225,12 @@ export function App() {
         clientRef.current ? deferredIdentity(clientRef.current) : null,
       );
       if (report !== automatedRunRef.current) {
+        expectedSnapshot.current = JSON.stringify({
+          schema: 1,
+          appVersion,
+          dependencies,
+          report,
+        });
         automatedRunRef.current = report;
         setAutomatedRun(report);
       }
@@ -197,11 +241,11 @@ export function App() {
     }
   };
   useEffect(() => {
-    if (!client) return;
+    if (!client || persistence.unavailable) return;
     const identity = deferredIdentity(client);
     if (!identity) return;
     const ticket = readDeferredTicket(
-      localStorage,
+      storage,
       automatedRun,
       appVersion,
       identity,
@@ -276,6 +320,7 @@ export function App() {
     return () => controller.abort();
   }, [client, deferredRevision]);
   const runDeferred = (id: string) => {
+    if (persistence.unavailable) return;
     if (
       !automatedRun ||
       runController.current ||
@@ -283,6 +328,17 @@ export function App() {
       interaction
     )
       return;
+    try {
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error(
+          "Сохранённый прогон изменился. Откройте приложение заново перед завершающей проверкой.",
+        );
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error ? error.message : persistenceUnavailable,
+      );
+      return;
+    }
     const bridges = id === "bot:delivery" ? [] : availableBridges();
     const target =
       id === "bot:delivery"
@@ -308,7 +364,7 @@ export function App() {
     }
     // A repeat of a pending sendData checks its original nonce, never resends it.
     const pending = readDeferredTicket(
-      localStorage,
+      storage,
       automatedRun,
       appVersion,
       identity,
@@ -329,8 +385,19 @@ export function App() {
       return;
     }
     try {
-      saveRun(localStorage, automatedRun, appVersion, dependencies);
-      localStorage.setItem(deferredKey, JSON.stringify(ticket));
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error("Сохранённый прогон изменился");
+      expectedSnapshot.current = saveRun(
+        storage,
+        automatedRun,
+        appVersion,
+        dependencies,
+      );
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error("Сохранённый прогон изменился");
+      storage.setItem(deferredKey, JSON.stringify(ticket));
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error("Сохранённый прогон изменился");
     } catch {
       dispose();
       setExportMessage(
@@ -360,13 +427,13 @@ export function App() {
         } else if (
           ticket.operation === "sendData" &&
           mounted.current &&
-          ownsDeferredTicket(localStorage, ticket)
+          ownsDeferredTicket(storage, ticket)
         ) {
           setDeferredRevision((value) => value + 1);
         }
       })
       .catch((error) => {
-        if (!ownsDeferredTicket(localStorage, ticket)) return;
+        if (!ownsDeferredTicket(storage, ticket)) return;
         // A timeout may follow delivery. Preserve the nonce for correlation.
         if (ticket.operation === "sendData") {
           if (mounted.current) {
@@ -411,6 +478,7 @@ export function App() {
     onChange: selectSection,
   });
   const restorePrevious = async () => {
+    if (persistence.unavailable) return;
     const ticket = pendingRecoveryRef.current;
     if (
       !ticket ||
@@ -429,9 +497,10 @@ export function App() {
       const remaining = await recoverRun(
         ticket,
         bridges,
-        localStorage,
+        storage,
         controller.signal,
         (update) => {
+          expectedSnapshot.current = update.snapshot;
           pendingRecoveryRef.current = update;
           if (mounted.current) setPendingRecovery(update);
         },
@@ -458,7 +527,36 @@ export function App() {
       if (mounted.current) setRecovering(false);
     }
   };
+  const finishManualCleanup = () => {
+    if (
+      persistence.unavailable ||
+      runController.current ||
+      interaction ||
+      controllers.current.size
+    )
+      return;
+    const ticket = pendingRecoveryRef.current;
+    if (!ticket) return;
+    try {
+      attestManualCleanup(storage, ticket, true);
+      retiredRecovery.current = ticket.snapshot;
+      pendingRecoveryRef.current = null;
+      setPendingRecovery(null);
+      automatedRunRef.current = null;
+      setAutomatedRun(null);
+      setExportMessage(
+        "Ручная очистка подтверждена вами, SDK её не проверял. Исходная запись сохранена в локальном архиве. Теперь можно запустить новую проверку.",
+      );
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error
+          ? error.message
+          : "Не удалось сохранить подтверждение. Обязательства очистки сохранены.",
+      );
+    }
+  };
   const startAll = async (resume = false) => {
+    if (persistence.unavailable) return;
     if (
       runController.current ||
       deferredBusy.current ||
@@ -479,11 +577,37 @@ export function App() {
       );
       return;
     }
+    try {
+      const snapshot = storage.getItem(lastRunKey);
+      if (snapshot !== expectedSnapshot.current)
+        throw new Error(
+          "Архив или сохранённый прогон изменился. Откройте приложение заново перед запуском.",
+        );
+      if (
+        retiredRecovery.current &&
+        (snapshot !== retiredRecovery.current ||
+          !isManuallyRetired(storage, snapshot))
+      )
+        throw new Error(
+          "Архив или сохранённый прогон изменился. Откройте приложение заново перед запуском.",
+        );
+      const outstanding = readRecovery(storage, dependencies);
+      if (outstanding) {
+        pendingRecoveryRef.current = outstanding;
+        setPendingRecovery(outstanding);
+        return;
+      }
+      if (persistence.unavailable) return;
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error ? error.message : persistenceUnavailable,
+      );
+      return;
+    }
     const previous = resume ? automatedRunRef.current : null;
     if (resume && !canResume(previous)) return;
     const bridges = availableBridges();
-    const selectedBridge = previous?.assistedBridge ?? assistedBridge;
-    const primary = bridges.find((bridge) => bridge.id === selectedBridge)!;
+    const primary = bridges[0];
     const runClient = primary.client;
     const runOwner = runClient
       ? (deferredIdentity(runClient) ?? undefined)
@@ -495,17 +619,19 @@ export function App() {
       );
       return;
     }
+    try {
+      storage.removeItem(deferredKey);
+    } catch {
+      for (const bridge of bridges) bridge.client?.dispose();
+      setExportMessage(persistenceUnavailable);
+      return;
+    }
     const runId = previous?.id ?? crypto.randomUUID();
     const controller = new AbortController();
     runController.current = controller;
     setResumingRun(resume);
     setConsent(null);
     setExportMessage("");
-    try {
-      localStorage.removeItem(deferredKey);
-    } catch {
-      /* Run identity also fences old tickets. */
-    }
     runEvents.current = {};
     let resolveAudio!: (value: AudioStart | PromiseLike<AudioStart>) => void;
     const audioStarted = new Promise<AudioStart>((resolve) => {
@@ -601,20 +727,51 @@ export function App() {
         ),
       };
       latestReport = report;
-      if (!mounted.current) return;
       automatedRunRef.current = report;
-      setAutomatedRun(report);
+      if (mounted.current) setAutomatedRun(report);
       try {
-        saveRun(localStorage, report, appVersion, dependencies);
+        if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+          throw new Error("Сохранённый прогон изменился");
+        if (retiredRecovery.current) {
+          const snapshot = retiredRecovery.current;
+          if (
+            storage.getItem(lastRunKey) !== snapshot ||
+            !isManuallyRetired(storage, snapshot)
+          )
+            throw new Error("Архив ручной очистки изменился");
+        }
+        expectedSnapshot.current = saveRun(
+          storage,
+          report,
+          appVersion,
+          dependencies,
+        );
+        retiredRecovery.current = null;
       } catch {
-        /* The live report remains available. */
+        controller.abort(new Error(persistenceUnavailable));
+        const interrupted: RunReport = {
+          ...report,
+          state: "cancelled",
+          resumeBlocked: true,
+          resumeError: persistenceUnavailable,
+          checks: report.checks.map((check) =>
+            check.id === "cleanup"
+              ? {
+                  ...check,
+                  state: "failed",
+                  evidence: undefined,
+                  detail: "Сохранение восстановления не подтверждено",
+                }
+              : check,
+          ),
+        };
+        automatedRunRef.current = interrupted;
+        if (mounted.current) setAutomatedRun(interrupted);
+        throw new Error(persistenceUnavailable);
       }
-      setStartingRun(false);
+      if (mounted.current) setStartingRun(false);
     };
-    for (const bridge of [
-      primary,
-      ...bridges.filter((item) => item !== primary),
-    ]) {
+    for (const bridge of bridges) {
       const suite = createSuite({
         ...common,
         runId,
@@ -637,7 +794,6 @@ export function App() {
           if (latestReport) publishReport(latestReport);
         },
         client: bridge.client,
-        panelExpanded: bridge.panelExpanded,
         observed: () => observed.get(bridge.id)!,
         writeAccess: bridge === primary ? writeAccess : undefined,
         supportsOperation: bridge.native
@@ -650,26 +806,6 @@ export function App() {
           operationNames.includes(check.id as MiniAppOperation) ||
           check.id.startsWith("button:");
         const event = check.id.startsWith("event:");
-        if (bridge !== primary && !host && !event) continue;
-        if (bridge !== primary && check.id === "requestWriteAccess") {
-          check.skip = () =>
-            !bridge.client?.supports("requestWriteAccess")
-              ? {
-                  state: "skipped",
-                  detail: "Этот мост не поддерживает разрешение на сообщения",
-                }
-              : undefined;
-          check.execute = (signal) =>
-            guidedBridgeCheck(
-              "requestWriteAccess",
-              {
-                client: bridge.client!,
-                interact,
-                observed: () => observed.get(bridge.id)!,
-              },
-              signal,
-            );
-        }
         unsortedPlan.push({
           ...check,
           id: host || event ? `${bridge.id}:${check.id}` : check.id,
@@ -687,7 +823,7 @@ export function App() {
       });
     }
     if (includeBot) unsortedPlan.push(createDeliveryCheck(() => latestReport));
-    const plan = orderRunPlan(unsortedPlan, previous?.checks, selectedBridge);
+    const plan = orderRunPlan(unsortedPlan, previous?.checks);
     const cleanup: Check = {
       id: "cleanup",
       label: "Восстановление после прогона",
@@ -714,6 +850,10 @@ export function App() {
         throw new Error(
           "Набор проверок изменился. Сохранённый отчёт доступен; начните новый прогон.",
         );
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error(
+          "Сохранённый прогон изменился. Откройте приложение заново перед запуском.",
+        );
       try {
         audio.current ??= new AudioContext();
       } catch {
@@ -723,7 +863,6 @@ export function App() {
 
       await runChecks(plan, cleanup, controller.signal, publishReport, 12000, {
         id: runId,
-        assistedBridge: selectedBridge,
         ...(previous
           ? {
               previous,
@@ -819,15 +958,6 @@ export function App() {
   useEffect(() => {
     mounted.current = true;
     const releases: Array<() => void> = [];
-    const detected = availableBridges();
-    const ids = detected
-      .filter((bridge) => bridge.client)
-      .map((bridge) => bridge.id as AssistedBridge);
-    setAvailableBridgeIds(ids);
-    const savedBridge = automatedRunRef.current?.assistedBridge;
-    if (savedBridge) setAssistedBridge(savedBridge);
-    else if (ids[0]) setAssistedBridge(ids[0]);
-    for (const bridge of detected) bridge.client?.dispose();
     const next = createLoClient();
     setClient(next);
     let frameColor = "";
@@ -841,7 +971,7 @@ export function App() {
       const colors = preference === "host" ? snapshot?.theme : undefined;
       const hostColor = (value: string | undefined) =>
         value && /^#[a-f0-9]{6}$/i.test(value) ? value : undefined;
-      applyPalette(document.documentElement, "lo", scheme, {
+      applyPalette(document.documentElement, scheme, {
         bg_color: hostColor(colors?.background),
         secondary_bg_color: hostColor(colors?.secondaryBackground),
         text_color: hostColor(colors?.text),
@@ -1274,12 +1404,11 @@ export function App() {
         {tab === "Все проверки" && (
           <RunPage
             report={automatedRun}
-            assistedBridge={assistedBridge}
-            onBridgeChange={setAssistedBridge}
-            availableBridgeIds={availableBridgeIds}
+            persistenceUnavailable={persistenceFailed}
             pendingRecovery={pendingRecovery}
             recovering={recovering}
             onRecover={() => void restorePrevious()}
+            onManualCleanup={finishManualCleanup}
             interaction={interaction}
             starting={startingRun}
             stopping={stoppingRun}

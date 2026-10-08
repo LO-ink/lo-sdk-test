@@ -464,6 +464,7 @@ test("a crash-restored cleanup ledger prevents replacing the run even without a 
   versionsUnavailable();
   const report: RunReport = {
     id: "11111111-1111-4111-8111-111111111111",
+    owner: { appId: "app", userId: "42" },
     startedAt: new Date().toISOString(),
     state: "cancelled",
     checks: [
@@ -1513,3 +1514,429 @@ test("unverified expand and deferred close explain their classification while a 
   assert.ok(page.getByText(report.checks[1].detail));
   assert.equal(page.getAllByText("Вибрация").length, 1);
 });
+
+test("removed compatibility cleanup is explicit and cannot be relabelled as native restoration", () => {
+  const recovery = {
+    snapshot: "historical",
+    id: "11111111-1111-4111-8111-111111111111",
+    owner: { appId: "app", userId: "42" },
+    startedAt: new Date().toISOString(),
+    recovery: {
+      compat: {
+        key: "lo-sdk-run-11111111-1111-4111-8111-111111111111-compat",
+        written: ["deviceStorage"],
+        mutations: ["setButton"],
+        original: {},
+      },
+    },
+  };
+  const page = render(
+    <RunPage
+      report={null}
+      pendingRecovery={recovery}
+      interaction={null}
+      starting={false}
+      stopping={false}
+      exporting={false}
+      onRecover={() =>
+        assert.fail("A removed route cannot recover automatically")
+      }
+      onStart={() => assert.fail("Outstanding debt cannot be discarded")}
+      onStop={() => {}}
+      onExport={() => {}}
+      onDeferred={() => {}}
+    />,
+  );
+  assert.ok(page.getByText(/Нужна ручная очистка/));
+  assert.ok(
+    page.getByText(/lo-sdk-run-11111111-1111-4111-8111-111111111111-compat/),
+  );
+  assert.equal(
+    page.queryByRole("button", { name: "Восстановить прежний прогон" }),
+    null,
+  );
+  assert.equal(page.queryByRole("button", { name: "Начать проверку" }), null);
+});
+
+test("actual App preserves recent unknown-owner debt as a manual-only ticket without host effects or overwrite", async () => {
+  const { dependencyKey } = await import("../web/run-storage.ts");
+  const { default: build } = await import("../sdk-build.json");
+  const id = "11111111-1111-4111-8111-111111111111";
+  const key = `lo-sdk-run-${id}-native`;
+  const saved = JSON.stringify({
+    schema: 1,
+    appVersion: build.appVersion,
+    dependencies: dependencyKey(build.packages),
+    report: {
+      id,
+      startedAt: new Date(Date.now() - 60000).toISOString(),
+      state: "cancelled",
+      suiteRevision: 1,
+      checks: [
+        {
+          id: "cleanup",
+          label: "cleanup",
+          group: "fixture",
+          state: "failed",
+          detail: "Interrupted",
+          durationMs: 1,
+        },
+      ],
+      recovery: {
+        native: {
+          key,
+          written: ["deviceStorage"],
+          mutations: [],
+          original: {},
+        },
+      },
+    },
+  });
+  const calls: string[] = [];
+  Object.assign(globalThis, {
+    LO: {
+      MiniAppNative: {
+        protocolVersion: 1,
+        generation: "unknown-owner",
+        launchData: "",
+        operations: [
+          "deviceStorageRemove",
+          "setBackgroundColor",
+          "setBottomBarColor",
+        ],
+        capabilities: ["deviceStorage", "backgroundColor", "bottomBarColor"],
+        snapshot: () => ({ colorScheme: "light" }),
+        subscribe: () => () => {},
+        postMessage: (raw: string) => calls.push(JSON.parse(raw).operation),
+      },
+    },
+  });
+  localStorage.setItem("sdk-test.last-run", saved);
+  versionsUnavailable();
+  try {
+    const page = render(<App />);
+    assert.ok(page.getByText(/Владелец прежнего прогона неизвестен/));
+    assert.ok(page.getByText(new RegExp(key)));
+    assert.equal(
+      page.queryByRole("button", { name: "Восстановить прежний прогон" }),
+      null,
+    );
+    for (const name of [
+      "Начать проверку",
+      "Продолжить проверку",
+      "Начать заново",
+      "Скачать отчёт",
+    ])
+      assert.equal(page.queryByRole("button", { name }), null);
+    await waitFor(() =>
+      assert.ok(page.getByText(/Владелец прежнего прогона неизвестен/)),
+    );
+    assert.deepEqual(calls, []);
+    assert.equal(localStorage.getItem("sdk-test.last-run"), saved);
+  } finally {
+    cleanup();
+    Reflect.deleteProperty(globalThis, "LO");
+  }
+});
+
+for (const outcome of [
+  "complete",
+  "quota",
+  "archive-lost",
+  "replaced",
+  "reloaded-replaced",
+  "reloaded-archive-lost",
+] as const) {
+  test(`actual App manual cleanup ${outcome} preserves original obligations and truthful evidence`, async () => {
+    const { manualArchiveKey } = await import("../web/manual-recovery.ts");
+    const id = "22222222-2222-4222-8222-222222222222";
+    const original = JSON.stringify({
+      schema: 1,
+      appVersion: "old",
+      dependencies: "old",
+      report: {
+        id,
+        owner: { appId: "original-app", userId: "original-user" },
+        startedAt: new Date(Date.now() - 60000).toISOString(),
+        state: "cancelled",
+        checks: [
+          {
+            id: "cleanup",
+            label: "cleanup",
+            group: "fixture",
+            state: "failed",
+            detail: "Interrupted",
+            durationMs: 1,
+          },
+        ],
+        recovery: {
+          compat: {
+            key: `lo-sdk-run-${id}-compat`,
+            written: ["deviceStorage"],
+            mutations: ["setButton", "setBackgroundColor"],
+            buttons: ["main"],
+            original: { theme: { background: "#123456" } },
+          },
+        },
+      },
+    });
+    const calls: string[] = [];
+    Object.assign(globalThis, {
+      LO: {
+        MiniAppNative: {
+          protocolVersion: 1,
+          generation: "manual-archive",
+          launchData: "",
+          operations: ["deviceStorageRemove"],
+          capabilities: ["deviceStorage"],
+          snapshot: () => ({}),
+          subscribe: () => () => {},
+          postMessage: (raw: string) => calls.push(JSON.parse(raw).operation),
+        },
+      },
+    });
+    localStorage.setItem("sdk-test.last-run", original);
+    versionsUnavailable();
+    const originalSet = dom.window.Storage.prototype.setItem;
+    try {
+      const page = render(<App />);
+      fireEvent.click(
+        page.getByRole("button", {
+          name: "Показать данные очистки",
+        }),
+      );
+      const exported = JSON.parse(
+        (
+          page.getByRole("textbox", {
+            name: "Полная запись очистки (JSON)",
+          }) as HTMLTextAreaElement
+        ).value,
+      );
+      assert.equal("originalSnapshot" in exported, false);
+      assert.equal(exported.owner.userId, "original-user");
+      assert.equal(
+        exported.obligations.compat.original.theme.background,
+        "#123456",
+      );
+      const attest = page.getByRole("button", {
+        name: "Сохранить подтверждение ручной очистки",
+      }) as HTMLButtonElement;
+      assert.equal(attest.disabled, true);
+      fireEvent.click(attest);
+      assert.equal(localStorage.getItem(manualArchiveKey(original)), null);
+      fireEvent.click(page.getByRole("checkbox", { name: /Я удалил все/ }));
+      if (outcome === "quota")
+        dom.window.Storage.prototype.setItem = function (key, value) {
+          if (key.startsWith("sdk-test.manual-cleanup."))
+            throw new DOMException("quota", "QuotaExceededError");
+          return originalSet.call(this, key, value);
+        };
+      fireEvent.click(attest);
+      assert.equal(localStorage.getItem("sdk-test.last-run"), original);
+      assert.deepEqual(calls, []);
+      if (outcome === "quota") {
+        assert.ok(page.getByRole("region", { name: "Сохранение недоступно" }));
+        assert.equal(
+          page.queryByRole("button", { name: "Начать проверку" }),
+          null,
+        );
+        assert.equal(localStorage.getItem(manualArchiveKey(original)), null);
+        return;
+      }
+      assert.ok(
+        page.getByText(/Ручная очистка подтверждена вами, SDK её не проверял/),
+      );
+      assert.ok(page.getByRole("button", { name: "Начать проверку" }));
+      const archived = JSON.parse(
+        localStorage.getItem(manualArchiveKey(original))!,
+      );
+      assert.equal(archived.verified, false);
+      assert.equal(
+        JSON.parse(archived.snapshot).report.checks[0].state,
+        "failed",
+      );
+      if (outcome === "archive-lost" || outcome === "replaced") {
+        if (outcome === "archive-lost")
+          localStorage.removeItem(manualArchiveKey(original));
+        else
+          localStorage.setItem(
+            "sdk-test.last-run",
+            original.replace("original-user", "replacement-user"),
+          );
+        const before = localStorage.getItem("sdk-test.last-run");
+        fireEvent.click(page.getByRole("button", { name: "Начать проверку" }));
+        assert.ok(page.getByText(/Архив или сохранённый прогон изменился/));
+        assert.equal(localStorage.getItem("sdk-test.last-run"), before);
+        assert.deepEqual(calls, []);
+      } else {
+        cleanup();
+        const reloaded = render(<App />);
+        assert.equal(reloaded.queryByText("Завершите восстановление"), null);
+        assert.ok(reloaded.getByRole("button", { name: "Начать проверку" }));
+        assert.equal(localStorage.getItem("sdk-test.last-run"), original);
+        assert.equal(reloaded.queryByText("Interrupted"), null);
+        if (
+          outcome === "reloaded-replaced" ||
+          outcome === "reloaded-archive-lost"
+        ) {
+          if (outcome === "reloaded-archive-lost")
+            localStorage.removeItem(manualArchiveKey(original));
+          else {
+            const { dependencyKey, readRecovery, readRun } =
+              await import("../web/run-storage.ts");
+            const { default: build } = await import("../sdk-build.json");
+            const replacement = JSON.parse(original);
+            replacement.dependencies = dependencyKey(build.packages);
+            replacement.appVersion = build.appVersion;
+            replacement.report.owner.userId = "new-owner";
+            replacement.report.recovery = {
+              native: {
+                ...replacement.report.recovery.compat,
+                key: `lo-sdk-run-${id}-native`,
+              },
+            };
+            localStorage.setItem(
+              "sdk-test.last-run",
+              JSON.stringify(replacement),
+            );
+            assert.ok(readRun(localStorage, replacement.dependencies));
+            assert.equal(
+              readRecovery(localStorage, replacement.dependencies),
+              null,
+            );
+          }
+          const before = localStorage.getItem("sdk-test.last-run");
+          fireEvent.click(
+            reloaded.getByRole("button", { name: "Начать проверку" }),
+          );
+          assert.ok(
+            reloaded.getByText(/Архив или сохранённый прогон изменился/),
+          );
+          assert.equal(localStorage.getItem("sdk-test.last-run"), before);
+          assert.deepEqual(calls, []);
+        }
+      }
+    } finally {
+      dom.window.Storage.prototype.setItem = originalSet;
+      cleanup();
+      Reflect.deleteProperty(globalThis, "LO");
+    }
+  });
+}
+
+for (const replaced of [false, true]) {
+  test(`actual App deferred action ${replaced ? "refuses a foreign replacement" : "tracks its own serialized snapshot through a result"}`, async () => {
+    const { dependencyKey } = await import("../web/run-storage.ts");
+    const { default: build } = await import("../sdk-build.json");
+    const report: RunReport = {
+      id: "44444444-4444-4444-8444-444444444444",
+      owner: { appId: "fixture", userId: "42" },
+      startedAt: new Date(Date.now() - 60000).toISOString(),
+      state: "finished",
+      recovery: {},
+      checks: [
+        {
+          id: "native:close",
+          label: "Close fixture",
+          group: "fixture",
+          bridge: "native",
+          state: "manual",
+          detail: "Needs confirmation",
+          durationMs: 0,
+        },
+        {
+          id: "cleanup",
+          label: "Cleanup",
+          group: "fixture",
+          state: "passed",
+          detail: "Restored",
+          durationMs: 0,
+        },
+      ],
+    };
+    const original = JSON.stringify(
+      {
+        schema: 1,
+        appVersion: build.appVersion,
+        dependencies: dependencyKey(build.packages),
+        report,
+      },
+      null,
+      2,
+    );
+    const calls: string[] = [],
+      listeners = new Set<(raw: string) => void>();
+    Object.assign(globalThis, {
+      LO: {
+        MiniAppNative: {
+          protocolVersion: 1,
+          generation: "deferred-guard",
+          launchData: new URLSearchParams({
+            app_id: "fixture",
+            user: JSON.stringify({ id: "42" }),
+          }).toString(),
+          operations: ["close"],
+          capabilities: ["close"],
+          snapshot: () => ({}),
+          subscribe: (listener: (raw: string) => void) => {
+            listeners.add(listener);
+            return () => listeners.delete(listener);
+          },
+          postMessage: (raw: string) => {
+            const request = JSON.parse(raw);
+            calls.push(request.operation);
+            for (const listener of listeners)
+              listener(
+                JSON.stringify({
+                  channel: "lo.miniapp",
+                  version: 1,
+                  generation: "deferred-guard",
+                  kind: "result",
+                  id: request.id,
+                  ok: true,
+                  value: false,
+                }),
+              );
+          },
+        },
+      },
+    });
+    localStorage.setItem("sdk-test.last-run", original);
+    versionsUnavailable();
+    try {
+      const page = render(<App />);
+      const button = await page.findByRole("button", {
+        name: "native · Close fixture",
+      });
+      const replacement = original.replace(
+        "Needs confirmation",
+        "Newer replacement report",
+      );
+      if (replaced) localStorage.setItem("sdk-test.last-run", replacement);
+      fireEvent.click(button);
+      if (replaced) {
+        assert.ok(
+          page.getByText(
+            /Откройте приложение заново перед завершающей проверкой/,
+          ),
+        );
+        assert.equal(localStorage.getItem("sdk-test.last-run"), replacement);
+        assert.equal(localStorage.getItem("sdk-test.end-action"), null);
+        assert.deepEqual(calls, []);
+      } else {
+        await waitFor(() =>
+          assert.equal(
+            JSON.parse(localStorage.getItem("sdk-test.last-run")!).report
+              .checks[0].state,
+            "failed",
+          ),
+        );
+        assert.deepEqual(calls, ["close"]);
+        assert.equal(localStorage.getItem("sdk-test.end-action"), null);
+      }
+    } finally {
+      cleanup();
+      Reflect.deleteProperty(globalThis, "LO");
+    }
+  });
+}

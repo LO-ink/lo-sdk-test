@@ -7,8 +7,14 @@ import {
   type RunReport,
 } from "./runner.ts";
 
+import {
+  isManuallyRetired,
+  lastRunKey,
+  type RecoveryTicket,
+} from "./manual-recovery.ts";
+export { lastRunKey, type RecoveryTicket } from "./manual-recovery.ts";
+
 type Storage = Pick<globalThis.Storage, "getItem" | "setItem">;
-export const lastRunKey = "sdk-test.last-run";
 const states = new Set([
   "pending",
   "running",
@@ -129,7 +135,8 @@ function readStoredRun(
 ): RunReport | null {
   try {
     const raw = storage.getItem(lastRunKey);
-    if (!raw || raw.length > 2000000) return null;
+    if (!raw || raw.length > 2000000 || isManuallyRetired(storage, raw))
+      return null;
     const saved: unknown = JSON.parse(raw);
     if (!object(saved) || !object(saved.report)) return null;
     if (
@@ -216,17 +223,16 @@ export function readRun(
   dependencies: string,
   now = Date.now(),
 ): RunReport | null {
-  return readStoredRun(storage, dependencies, now, false);
+  const report = readStoredRun(storage, dependencies, now, false);
+  return (report && !report.owner && hasRecoveryDebt(report)) ||
+    report?.assistedBridge === "compat" ||
+    report?.checks.some((check) => check.id.startsWith("compat:")) ||
+    report?.recovery?.compat
+    ? null
+    : report;
 }
 
 /** Cleanup intent survives evidence expiry, without exposing old check results. */
-export type RecoveryTicket = {
-  snapshot: string;
-  id: string;
-  owner: NonNullable<RunReport["owner"]>;
-  startedAt: string;
-  recovery: Record<string, Recovery>;
-};
 export function readRecovery(
   storage: Storage,
   dependencies: string,
@@ -234,12 +240,15 @@ export function readRecovery(
 ): RecoveryTicket | null {
   try {
     const snapshot = storage.getItem(lastRunKey);
-    if (!snapshot) return null;
-    const source = { getItem: () => snapshot, setItem: () => {} };
-    if (readStoredRun(source, dependencies, now, false)) return null;
+    if (!snapshot || isManuallyRetired(storage, snapshot)) return null;
+    const source = {
+      getItem: (key: string) =>
+        key === lastRunKey ? snapshot : storage.getItem(key),
+      setItem: () => {},
+    };
+    if (readRun(source, dependencies, now)) return null;
     const report = readStoredRun(source, dependencies, now, true);
-    if (!report?.owner || !report.recovery || !hasRecoveryDebt(report))
-      return null;
+    if (!report?.recovery || !hasRecoveryDebt(report)) return null;
     return {
       snapshot,
       id: report.id,
@@ -281,10 +290,14 @@ export function saveRun(
   appVersion: string,
   dependencies: string,
 ) {
-  storage.setItem(
-    lastRunKey,
-    JSON.stringify({ schema: 1, appVersion, dependencies, report }),
-  );
+  const snapshot = JSON.stringify({
+    schema: 1,
+    appVersion,
+    dependencies,
+    report,
+  });
+  storage.setItem(lastRunKey, snapshot);
+  return snapshot;
 }
 export function sameOwner(
   report: Pick<RunReport, "owner">,

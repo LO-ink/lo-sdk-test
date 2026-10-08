@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-for (const selected of ["native", "compat"] as const) {
+for (const selected of ["native"] as const) {
   test(`${selected}: all automatic work finishes before a single selected-bridge permission action`, async ({
     page,
   }) => {
@@ -52,26 +52,10 @@ for (const selected of ["native", "compat"] as const) {
                 );
             },
           },
-          WebApp: {
-            capabilities: ["ready", "requestWriteAccess", "haptics"],
-            initData: launchData,
-            colorScheme: "light",
-            isExpanded: true,
-            version: "10.0",
-            onEvent() {},
-            offEvent() {},
-            ready() {
-              calls.push("compat:ready");
-            },
-            requestWriteAccess(callback: (allowed: boolean) => void) {
-              calls.push("compat:requestWriteAccess");
-              callback(true);
-            },
-            HapticFeedback: {
-              impactOccurred() {
-                calls.push("compat:haptic");
-              },
-            },
+          get WebApp() {
+            throw new Error(
+              "The native app must never access an obsolete host route",
+            );
           },
         },
       });
@@ -103,22 +87,9 @@ for (const selected of ["native", "compat"] as const) {
       });
     });
     await page.goto("/");
-    const selector = page.getByRole("tablist", {
-      name: "Мост интерактивных проверок",
-    });
     await expect(
-      selector.getByRole("tab", { name: "Совместимый" }),
-    ).toBeEnabled();
-    await selector
-      .getByRole("tab", {
-        name: selected === "native" ? "Нативный" : "Совместимый",
-        exact: true,
-      })
-      .click();
-    await page.screenshot({
-      path: `test-results/phases-${selected}-selection.png`,
-      fullPage: true,
-    });
+      page.getByRole("tablist", { name: "Мост интерактивных проверок" }),
+    ).toHaveCount(0);
     await page.getByRole("button", { name: "Начать проверку" }).click();
     await expect(
       page.getByRole("button", { name: "Запросить разрешение" }),
@@ -129,11 +100,13 @@ for (const selected of ["native", "compat"] as const) {
       report: JSON.parse(localStorage.getItem("sdk-test.last-run")!).report,
     }));
     expect(before.calls).toContain("native:ready");
-    expect(before.calls).toContain("compat:ready");
+    expect(
+      before.calls.every((call: string) => call.startsWith("native:")),
+    ).toBe(true);
     expect(
       before.calls.some((call) => call.endsWith("requestWriteAccess")),
     ).toBe(false);
-    expect(before.report.assistedBridge).toBe(selected);
+    expect(before.report.assistedBridge).toBeUndefined();
     expect(
       before.report.checks
         .filter(
@@ -180,11 +153,6 @@ for (const selected of ["native", "compat"] as const) {
       page.getByRole("tablist", { name: "Мост интерактивных проверок" }),
     ).toHaveCount(0);
     await page.reload();
-    await expect(
-      page.getByText(
-        `Автоматически — оба моста. С вашим участием — ${selected === "native" ? "нативный" : "совместимый"} мост.`,
-      ),
-    ).toBeVisible();
     await page
       .getByRole("button", { name: "Начать заново", exact: true })
       .click();
@@ -197,7 +165,7 @@ for (const selected of ["native", "compat"] as const) {
           JSON.parse(localStorage.getItem("sdk-test.last-run")!).report
             .assistedBridge,
       ),
-    ).toBe(selected);
+    ).toBeUndefined();
     await page
       .getByRole("button", { name: "Остановить проверку", exact: true })
       .click();

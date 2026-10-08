@@ -7,7 +7,7 @@ import { join } from "node:path";
 // @ts-expect-error The production server is plain JavaScript without declarations.
 import { createHandler } from "../server/app.mjs";
 
-test("Chromium uploads a File with its byte length through the real handler", async ({
+test("browser uploads a File with its byte length through the real handler", async ({
   page,
   request,
 }) => {
