@@ -17,14 +17,13 @@ for (const failure of [
       const originalSet = durable.setItem.bind(durable);
       const calls: string[] = [];
       const listeners = new Set<(raw: string) => void>();
-      let reads = 0,
+      let hostConnected = false,
         denied = false;
       Object.assign(window, { storageFixture: { calls, durable } });
       Object.defineProperty(window, "localStorage", {
         configurable: true,
         get() {
-          reads++;
-          if (mode === "startup" || (mode === "host-effect" && reads >= 4))
+          if (mode === "startup" || (mode === "host-effect" && hostConnected))
             throw new DOMException("private origin", "SecurityError");
           return durable;
         },
@@ -73,6 +72,7 @@ for (const failure of [
             capabilities: ["ready", "deviceStorage"],
             snapshot: () => ({ colorScheme: "light" }),
             subscribe: (listener: (raw: string) => void) => {
+              hostConnected = true;
               listeners.add(listener);
               return () => listeners.delete(listener);
             },

@@ -9,6 +9,8 @@ import {
   type CheckResult,
   type RunReport,
 } from "./runner.ts";
+import { manualOnlyRecovery } from "./manual-recovery.ts";
+import { ManualRecovery } from "./ManualRecovery.tsx";
 import { RunInteraction } from "./RunInteraction.tsx";
 import { canRunDeferred, type DeferredIdentity } from "./deferred.ts";
 import type { RecoveryTicket } from "./run-storage.ts";
@@ -114,10 +116,12 @@ export function RunPage({
   pendingRecovery = null,
   recovering = false,
   onRecover,
+  onManualCleanup,
 }: {
   pendingRecovery?: RecoveryTicket | null;
   recovering?: boolean;
   onRecover?: () => void;
+  onManualCleanup?: () => void;
   report: RunReport | null;
   persistenceUnavailable?: boolean;
   interaction: InteractionView | null;
@@ -207,22 +211,30 @@ export function RunPage({
                 </Text>
               </Stack>
             ))}
-          <Button
-            disabled={
-              recovering ||
-              Boolean(interaction) ||
-              !onRecover ||
-              !pendingRecovery.owner ||
-              !Object.entries(pendingRecovery.recovery).some(
-                ([id, entry]) =>
-                  id === "native" &&
-                  (entry.written.length || entry.mutations.length),
-              )
-            }
-            onClick={onRecover}
-          >
-            {recovering ? "Восстанавливаем…" : "Восстановить прежний прогон"}
-          </Button>
+          <ManualRecovery
+            key={pendingRecovery.snapshot}
+            ticket={pendingRecovery}
+            disabled={recovering || Boolean(interaction)}
+            onAttest={onManualCleanup}
+          />
+          {!manualOnlyRecovery(pendingRecovery) && (
+            <Button
+              disabled={
+                recovering ||
+                Boolean(interaction) ||
+                !onRecover ||
+                !pendingRecovery.owner ||
+                !Object.entries(pendingRecovery.recovery).some(
+                  ([id, entry]) =>
+                    id === "native" &&
+                    (entry.written.length || entry.mutations.length),
+                )
+              }
+              onClick={onRecover}
+            >
+              {recovering ? "Восстанавливаем…" : "Восстановить прежний прогон"}
+            </Button>
+          )}
         </Stack>
       </section>
     );

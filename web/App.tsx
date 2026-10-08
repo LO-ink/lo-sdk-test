@@ -60,6 +60,11 @@ import {
   type DeferredTicket,
 } from "./deferred.ts";
 
+import {
+  attestManualCleanup,
+  isManuallyRetired,
+  lastRunKey,
+} from "./manual-recovery.ts";
 import { recoverRun, recoveryPending } from "./recovery.ts";
 import {
   dependencyKey,
@@ -148,14 +153,37 @@ export function App() {
   const dialog = useRef<HTMLDialogElement>(null);
   const parameterInput = useRef<HTMLTextAreaElement>(null);
   const reportDialog = useRef<HTMLDialogElement>(null);
+  const [mountedSnapshot] = useState(() => {
+    try {
+      return storage.getItem(lastRunKey);
+    } catch {
+      return null;
+    }
+  });
+  const expectedSnapshot = useRef(mountedSnapshot);
+  const initialStorage = {
+    getItem: (key: string) =>
+      key === lastRunKey ? mountedSnapshot : storage.getItem(key),
+    setItem: storage.setItem,
+  };
   const [automatedRun, setAutomatedRun] = useState<RunReport | null>(() =>
-    readRun(storage, dependencies),
+    readRun(initialStorage, dependencies),
   );
   const [pendingRecovery, setPendingRecovery] = useState<RecoveryTicket | null>(
-    () => readRecovery(storage, dependencies),
+    () => readRecovery(initialStorage, dependencies),
   );
   const pendingRecoveryRef = useRef(pendingRecovery);
   pendingRecoveryRef.current = pendingRecovery;
+  const [retiredAtMount] = useState(() => {
+    try {
+      return mountedSnapshot && isManuallyRetired(storage, mountedSnapshot)
+        ? mountedSnapshot
+        : null;
+    } catch {
+      return null;
+    }
+  });
+  const retiredRecovery = useRef<string | null>(retiredAtMount);
   const [recovering, setRecovering] = useState(false);
   const automatedRunRef = useRef(automatedRun);
   automatedRunRef.current = automatedRun;
@@ -185,6 +213,8 @@ export function App() {
   ) => {
     if (!mounted.current) return;
     try {
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error("Сохранённый прогон изменился");
       const report = persistDeferredResult(
         storage,
         automatedRunRef.current,
@@ -195,6 +225,12 @@ export function App() {
         clientRef.current ? deferredIdentity(clientRef.current) : null,
       );
       if (report !== automatedRunRef.current) {
+        expectedSnapshot.current = JSON.stringify({
+          schema: 1,
+          appVersion,
+          dependencies,
+          report,
+        });
         automatedRunRef.current = report;
         setAutomatedRun(report);
       }
@@ -292,6 +328,17 @@ export function App() {
       interaction
     )
       return;
+    try {
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error(
+          "Сохранённый прогон изменился. Откройте приложение заново перед завершающей проверкой.",
+        );
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error ? error.message : persistenceUnavailable,
+      );
+      return;
+    }
     const bridges = id === "bot:delivery" ? [] : availableBridges();
     const target =
       id === "bot:delivery"
@@ -338,8 +385,19 @@ export function App() {
       return;
     }
     try {
-      saveRun(storage, automatedRun, appVersion, dependencies);
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error("Сохранённый прогон изменился");
+      expectedSnapshot.current = saveRun(
+        storage,
+        automatedRun,
+        appVersion,
+        dependencies,
+      );
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error("Сохранённый прогон изменился");
       storage.setItem(deferredKey, JSON.stringify(ticket));
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error("Сохранённый прогон изменился");
     } catch {
       dispose();
       setExportMessage(
@@ -442,6 +500,7 @@ export function App() {
         storage,
         controller.signal,
         (update) => {
+          expectedSnapshot.current = update.snapshot;
           pendingRecoveryRef.current = update;
           if (mounted.current) setPendingRecovery(update);
         },
@@ -468,6 +527,34 @@ export function App() {
       if (mounted.current) setRecovering(false);
     }
   };
+  const finishManualCleanup = () => {
+    if (
+      persistence.unavailable ||
+      runController.current ||
+      interaction ||
+      controllers.current.size
+    )
+      return;
+    const ticket = pendingRecoveryRef.current;
+    if (!ticket) return;
+    try {
+      attestManualCleanup(storage, ticket, true);
+      retiredRecovery.current = ticket.snapshot;
+      pendingRecoveryRef.current = null;
+      setPendingRecovery(null);
+      automatedRunRef.current = null;
+      setAutomatedRun(null);
+      setExportMessage(
+        "Ручная очистка подтверждена вами, SDK её не проверял. Исходная запись сохранена в локальном архиве. Теперь можно запустить новую проверку.",
+      );
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error
+          ? error.message
+          : "Не удалось сохранить подтверждение. Обязательства очистки сохранены.",
+      );
+    }
+  };
   const startAll = async (resume = false) => {
     if (persistence.unavailable) return;
     if (
@@ -487,6 +574,33 @@ export function App() {
     if (!resume && hasRecoveryDebt(automatedRunRef.current)) {
       setExportMessage(
         "Сначала восстановите состояние прежнего прогона кнопкой продолжения. Новый запуск не должен потерять незавершённую очистку.",
+      );
+      return;
+    }
+    try {
+      const snapshot = storage.getItem(lastRunKey);
+      if (snapshot !== expectedSnapshot.current)
+        throw new Error(
+          "Архив или сохранённый прогон изменился. Откройте приложение заново перед запуском.",
+        );
+      if (
+        retiredRecovery.current &&
+        (snapshot !== retiredRecovery.current ||
+          !isManuallyRetired(storage, snapshot))
+      )
+        throw new Error(
+          "Архив или сохранённый прогон изменился. Откройте приложение заново перед запуском.",
+        );
+      const outstanding = readRecovery(storage, dependencies);
+      if (outstanding) {
+        pendingRecoveryRef.current = outstanding;
+        setPendingRecovery(outstanding);
+        return;
+      }
+      if (persistence.unavailable) return;
+    } catch (error) {
+      setExportMessage(
+        error instanceof Error ? error.message : persistenceUnavailable,
       );
       return;
     }
@@ -616,7 +730,23 @@ export function App() {
       automatedRunRef.current = report;
       if (mounted.current) setAutomatedRun(report);
       try {
-        saveRun(storage, report, appVersion, dependencies);
+        if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+          throw new Error("Сохранённый прогон изменился");
+        if (retiredRecovery.current) {
+          const snapshot = retiredRecovery.current;
+          if (
+            storage.getItem(lastRunKey) !== snapshot ||
+            !isManuallyRetired(storage, snapshot)
+          )
+            throw new Error("Архив ручной очистки изменился");
+        }
+        expectedSnapshot.current = saveRun(
+          storage,
+          report,
+          appVersion,
+          dependencies,
+        );
+        retiredRecovery.current = null;
       } catch {
         controller.abort(new Error(persistenceUnavailable));
         const interrupted: RunReport = {
@@ -719,6 +849,10 @@ export function App() {
       if (previous && !matchesPlan(previous, [...plan, cleanup]))
         throw new Error(
           "Набор проверок изменился. Сохранённый отчёт доступен; начните новый прогон.",
+        );
+      if (storage.getItem(lastRunKey) !== expectedSnapshot.current)
+        throw new Error(
+          "Сохранённый прогон изменился. Откройте приложение заново перед запуском.",
         );
       try {
         audio.current ??= new AudioContext();
@@ -1274,6 +1408,7 @@ export function App() {
             pendingRecovery={pendingRecovery}
             recovering={recovering}
             onRecover={() => void restorePrevious()}
+            onManualCleanup={finishManualCleanup}
             interaction={interaction}
             starting={startingRun}
             stopping={stoppingRun}

@@ -20,6 +20,10 @@ export function createRunPersistence(
     throw new Error(persistenceUnavailable);
   }
   const storage = {
+    get length() {
+      return access((target) => target.length);
+    },
+    key: (index: number) => access((target) => target.key(index)),
     getItem: (key: string) => access((target) => target.getItem(key)),
     setItem: (key: string, value: string) =>
       access((target) => target.setItem(key, value)),

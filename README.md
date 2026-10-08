@@ -118,3 +118,22 @@ tabular report numbers remain application responsibilities.
 The main sections support horizontal touch/pen swipes and shared UI SDK tabs. Swipes leave text fields, actions and horizontally scrolling tab/filter rows alone; they do not leave an active guided run. Manual section selection is retained when returning from the gallery. Whole filter labels scroll horizontally on narrow screens.
 
 Launch details show every typed SDK field without raw launch strings or signature credentials. LO interface language comes only from the optional native host snapshot; signed user language is displayed separately. Missing interface language on an older LO host requires a client update. An absent start parameter is normal for launches without one. Signature status changes only after server verification.
+
+## External manual cleanup
+
+Old unsupported-route or unknown-owner cleanup records remain blocked until their
+obligations are completed. The recovery panel exposes a copyable full JSON ticket,
+including the original owner, storage keys, affected buttons and original settings.
+Only explicit cleanup fields are exported; unrelated legacy fields and raw stored
+snapshots remain private to the local archive.
+A user who has completed every listed obligation in the original context can
+explicitly attest to external manual cleanup. This is unverified user testimony,
+never an automatic cleanup pass or evidence for the current SDK build. Mixed
+records with owned native obligations must complete native recovery first.
+
+An immutable local archive retains the exact original snapshot before the app
+logically retires it. The active snapshot is not removed; only an exact archived
+match permits a new run. Changed records, failed persistence, archive collisions,
+or exhausted archive limits leave new runs blocked. Archives are capped at 20
+records and 8 MiB without eviction. Local storage uses optimistic snapshot checks,
+not atomic cross-tab transactions; use one active SDK Test tab.
