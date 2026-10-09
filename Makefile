@@ -35,7 +35,7 @@ secrets:
 	$(NPM) run secrets
 
 GO_DIR := server/go
-export GOTOOLCHAIN := go1.27.1
+export GOTOOLCHAIN := go1.27.2
 
 .PHONY: go-ci go-format go-lint go-test go-security
 go-ci: go-format go-lint go-test go-security
@@ -43,7 +43,9 @@ go-format:
 	test -z "$$(gofmt -l $(GO_DIR))"
 go-lint:
 	cd $(GO_DIR) && go vet ./...
-	cd $(GO_DIR) && go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+	@set -eu; analyzer_dir=$$(mktemp -d); trap 'rm -rf "$$analyzer_dir"' EXIT HUP INT TERM; \
+	  cd tools/go-analyzers && go build -mod=readonly -o "$$analyzer_dir/staticcheck" honnef.co/go/tools/cmd/staticcheck; \
+	  cd ../../$(GO_DIR) && "$$analyzer_dir/staticcheck" ./...
 go-test:
 	cd $(GO_DIR) && go test -race -covermode=atomic -coverprofile=../../coverage-go.out ./...
 	cd $(GO_DIR) && go tool cover -func=../../coverage-go.out > ../../coverage-go.txt
