@@ -767,10 +767,12 @@ test("a first lost Secretary proposal response becomes an uncertain same-key ret
   );
 });
 
-test("launch details expose every typed value without signatures or raw credentials", async () => {
+test("launch details expose typed values and open photos only after a user action", async () => {
   const { LaunchDetails } = await import("../web/LaunchDetails.tsx");
+  const opened: string[] = [];
   const page = render(
     <LaunchDetails
+      onOpenPhoto={(url) => opened.push(url)}
       authenticated={false}
       locale="ru"
       launch={{
@@ -796,7 +798,6 @@ test("launch details expose every typed value without signatures or raw credenti
     "Test",
     "Person",
     "synthetic",
-    "https://cdn.lo.ink/test.jpg",
     "en",
     "resume",
     "private",
@@ -807,11 +808,53 @@ test("launch details expose every typed value without signatures or raw credenti
   ])
     assert.ok(page.getByText(value, { exact: true }));
   assert.equal(page.container.querySelectorAll("img, a").length, 0);
+  assert.deepEqual(opened, []);
+  assert.equal(page.queryByText("https://cdn.lo.ink/test.jpg"), null);
+  fireEvent.click(
+    page.getByRole("button", { name: "Открыть фото пользователя" }),
+  );
+  assert.deepEqual(opened, ["https://cdn.lo.ink/test.jpg"]);
   page.rerender(
     <LaunchDetails authenticated launch={{ user: { id: "17" } }} />,
   );
   assert.equal(page.getAllByText("Не передано").length, 11);
   assert.ok(page.getByText("Проверена"));
+});
+
+test("launch photos refuse unsafe URLs and stay disabled without host support", async () => {
+  const { LaunchDetails } = await import("../web/LaunchDetails.tsx");
+  const opened: string[] = [];
+  const page = render(<LaunchDetails authenticated={false} />);
+  for (const photoUrl of [
+    "javascript:alert(1)",
+    "data:image/svg+xml,test",
+    "http://cdn.lo.ink/test.jpg",
+    "https://user:password@cdn.lo.ink/test.jpg",
+    "not a URL",
+  ]) {
+    page.rerender(
+      <LaunchDetails
+        authenticated={false}
+        launch={{ user: { id: "17", photoUrl } }}
+        onOpenPhoto={(url) => opened.push(url)}
+      />,
+    );
+    assert.ok(page.getByText("Недопустимый URL"));
+    assert.equal(page.queryByRole("button"), null);
+    assert.equal(page.container.querySelectorAll("img, a").length, 0);
+  }
+  page.rerender(
+    <LaunchDetails
+      authenticated={false}
+      launch={{ user: { id: "17", photoUrl: "https://cdn.lo.ink/test.jpg" } }}
+    />,
+  );
+  const button = page.getByRole("button", {
+    name: "Открыть фото пользователя",
+  });
+  assert.equal(button.hasAttribute("disabled"), true);
+  fireEvent.click(button);
+  assert.deepEqual(opened, []);
 });
 
 test("tab swipes change adjacent sections but preserve vertical scrolling and controls", async () => {

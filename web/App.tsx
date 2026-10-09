@@ -1703,6 +1703,11 @@ export function App() {
                 launch={launch}
                 authenticated={authenticated}
                 locale={client?.adapter.snapshot().locale}
+                onOpenPhoto={
+                  client?.supports("openLink")
+                    ? (url) => void run("openLink", { url })
+                    : undefined
+                }
               />
               <div className="group-footer">
                 <Text tone="secondary" size="caption">
@@ -1723,6 +1728,7 @@ export function App() {
                   </Text>
                 )}
                 {resultView("verifyInitData")}
+                {resultView("openLink")}
               </div>
             </Surface>
             <Heading level={2} className="standalone-heading">
