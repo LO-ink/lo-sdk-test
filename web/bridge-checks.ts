@@ -14,7 +14,6 @@ type Context = {
   appearanceGuard?: (testing: boolean, operation?: MiniAppOperation) => void;
   mutated?: (operation: MiniAppOperation, input: unknown) => void;
   mutationRejected?: (operation: MiniAppOperation) => void;
-  panelExpanded?: () => boolean | undefined;
   deferCleanup?: (restore: (signal: AbortSignal) => Promise<void>) => void;
 };
 export const deferredOperations = new Set<MiniAppOperation>([
@@ -175,12 +174,23 @@ export async function guidedBridgeCheck(
       detail: "ready выполнен; snapshot получен из моста",
     };
   }
-  if (name === "expand" && context.panelExpanded?.() === true) {
-    await call(name);
+  if (name === "expand") {
+    const answer = await interact(
+      {
+        title: definition.label,
+        detail:
+          "Запрос будет отправлен в LO. Мост не сообщает состояние развёрнутости панели: успешный вызов не подтверждает изменение её высоты.",
+        actionLabel: "Отправить запрос",
+        action: () => call(name),
+      },
+      signal,
+    );
     return {
       state: "manual",
       detail:
-        "Панель уже развёрнута. Запрос expand выполнен; увеличение высоты проверить нельзя.",
+        answer.decision === "skip"
+          ? "Запрос expand не выполнен: пользователь пропустил шаг"
+          : "Запрос expand выполнен. Мост не сообщает состояние развёрнутости панели; визуальный эффект не подтверждён.",
     };
   }
   if (name === "haptic")
@@ -612,7 +622,6 @@ export async function guidedBridgeCheck(
     };
   }
   const questions: Partial<Record<MiniAppOperation, string>> = {
-    expand: "Панель мини-приложения стала выше?",
     requestFullscreen: "LO перешёл в полный экран?",
     exitFullscreen: "LO вышел из полного экрана?",
     hideKeyboard: "Клавиатура скрылась?",
@@ -650,12 +659,10 @@ export async function guidedBridgeCheck(
     detail:
       "caution" in definition
         ? definition.caution
-        : name === "expand"
-          ? "Панель мини-приложения должна стать выше. Кнопки LO останутся на экране."
-          : name === "hideKeyboard"
-            ? "Коснитесь поля, чтобы открыть клавиатуру, затем нажмите «Проверить»."
-            : (questions[name] ??
-              "Выполните действие и проверьте результат в LO."),
+        : name === "hideKeyboard"
+          ? "Коснитесь поля, чтобы открыть клавиатуру, затем нажмите «Проверить»."
+          : (questions[name] ??
+            "Выполните действие и проверьте результат в LO."),
     input:
       promptInput ??
       (name === "hideKeyboard"

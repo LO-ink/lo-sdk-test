@@ -170,64 +170,6 @@ test("repeat with an input restores preparation before invoking the bridge again
   assert.deepEqual(await result, { decision: "yes", value: "second" });
 });
 
-test("an already expanded panel still calls each bridge without claiming a visible change", async () => {
-  const calls: string[] = [];
-  const adapter = client(async (name) => calls.push(name));
-  const result = await guidedBridgeCheck(
-    "expand",
-    {
-      client: adapter,
-      observed: () => ({}),
-      panelExpanded: () => true,
-      interact: async () =>
-        assert.fail("cannot ask to observe an impossible change"),
-    },
-    signal(),
-  );
-  assert.deepEqual(calls, ["expand"]);
-  assert.equal(result.state, "manual");
-  assert.match(result.detail!, /уже развёрнута/);
-  await assert.rejects(
-    guidedBridgeCheck(
-      "expand",
-      {
-        client: client(async () => {
-          throw new Error("bridge failure");
-        }),
-        observed: () => ({}),
-        panelExpanded: () => true,
-        interact: async () => assert.fail("must not ask"),
-      },
-      signal(),
-    ),
-    /bridge failure/,
-  );
-});
-
-test("an unexpanded panel cannot pass expand when the user saw no increase", async () => {
-  let calls = 0;
-  await assert.rejects(
-    guidedBridgeCheck(
-      "expand",
-      {
-        client: client(async () => {
-          calls++;
-        }),
-        observed: () => ({}),
-        panelExpanded: () => false,
-        interact: async (prompt) => {
-          assert.match(prompt.question!, /стала выше/);
-          await prompt.action!("");
-          return { decision: "no" };
-        },
-      },
-      signal(),
-    ),
-    /не подтвердил/,
-  );
-  assert.equal(calls, 1);
-});
-
 test("haptic API acknowledgement cannot become a pass without device confirmation", async () => {
   const calls: string[] = [];
   const adapter = client(async (name) => {
