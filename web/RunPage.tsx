@@ -1,4 +1,12 @@
-import { Button, Heading, Text, Progress, Surface, Stack } from "@lo-ink/ui";
+import {
+  Disclosure,
+  Button,
+  Heading,
+  Text,
+  Progress,
+  Surface,
+  Stack,
+} from "@lo-ink/ui";
 import { useState } from "react";
 import { SdkVersions } from "./SdkVersions.tsx";
 import {
@@ -372,10 +380,11 @@ export function RunPage({
           </div>
           <RunFeed checks={feedChecks.slice(0, 7)} />
           {feedChecks.length > 7 && (
-            <details>
-              <summary>Предыдущие шаги · {feedChecks.length - 7}</summary>
+            <Disclosure
+              summary={<>Предыдущие шаги · {feedChecks.length - 7}</>}
+            >
               <RunFeed checks={feedChecks.slice(7)} />
-            </details>
+            </Disclosure>
           )}
         </section>
       )}
@@ -499,11 +508,10 @@ export function RunPage({
                 {shown
                   .filter((c) => c.group === group)
                   .map((check) => (
-                    <details
+                    <Disclosure
                       key={check.id}
                       className={`run-check ${check.state}`}
-                    >
-                      <summary>
+                      summary={
                         <Text
                           as="span"
                           size="label"
@@ -512,6 +520,8 @@ export function RunPage({
                         >
                           {check.label}
                         </Text>
+                      }
+                      trailing={
                         <Text
                           as="span"
                           size="caption"
@@ -529,7 +539,8 @@ export function RunPage({
                             ? "Ответ API"
                             : labels[check.state]}
                         </Text>
-                      </summary>
+                      }
+                    >
                       <div className="run-check-detail">
                         <Text as="code" family="mono" size="caption">
                           {check.id}
@@ -555,7 +566,7 @@ export function RunPage({
                           </Text>
                         )}
                       </div>
-                    </details>
+                    </Disclosure>
                   ))}
               </Surface>
             </section>

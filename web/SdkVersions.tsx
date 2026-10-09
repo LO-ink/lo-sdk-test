@@ -1,4 +1,4 @@
-import { Text } from "@lo-ink/ui";
+import { Disclosure, Text } from "@lo-ink/ui";
 import { useEffect, useState } from "react";
 import { version as appVersion } from "../package.json";
 import sdkBuild from "../sdk-build.json";
@@ -45,26 +45,7 @@ export function SdkVersions() {
     return () => controller.abort();
   }, []);
   return (
-    <details className="sdk-versions" open>
-      <summary>
-        Версии SDK
-        <svg
-          className="disclosure-chevron"
-          viewBox="0 0 16 16"
-          width="16"
-          height="16"
-          fill="none"
-          aria-hidden="true"
-        >
-          <path
-            d="m4 6 4 4 4-4"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </summary>
+    <Disclosure className="sdk-versions" summary="Версии SDK" open>
       <Text tone="secondary" size="caption">
         LO SDK Test · {appVersion}
       </Text>
@@ -127,6 +108,6 @@ export function SdkVersions() {
           "GitHub недоступен. Актуальность не проверена."
         )}
       </Text>
-    </details>
+    </Disclosure>
   );
 }

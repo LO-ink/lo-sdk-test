@@ -544,6 +544,7 @@ test("the UI catalog covers all public primitives with local, isolated interacti
     "Stack · Inline",
     "TextArea",
     "Dialog",
+    "Disclosure",
     "Progress",
     "Surface",
   ])
