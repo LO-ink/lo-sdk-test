@@ -279,7 +279,12 @@ for (const mode of [
           ).toBe(0);
         } else {
           await page.reload();
-          await expect(page.getByText("Сохранён прежний отчёт")).toBeVisible();
+          await expect(page.getByText("Прежний отчёт в архиве")).toBeVisible();
+          await expect(
+            page.getByText("Новый запуск сохранит её в локальном архиве.", {
+              exact: false,
+            }),
+          ).toHaveCount(0);
           await page
             .getByRole("button", { name: "Сохранить прежний отчёт" })
             .click();

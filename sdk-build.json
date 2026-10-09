@@ -1,5 +1,5 @@
 {
-  "appVersion": "0.4.37",
+  "appVersion": "0.4.38",
   "source": "npm-registry",
   "repositories": [
     {
@@ -48,7 +48,7 @@
   "goVerifier": {
     "module": "github.com/LO-ink/lo-miniapp-sdk/go",
     "sourceCommit": "25d51f20a408801d7c35ed6c12007bfe402e83e4",
-    "toolchain": "go1.27.1",
+    "toolchain": "go1.27.2",
     "version": "v0.1.0"
   },
   "botContract": {

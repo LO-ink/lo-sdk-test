@@ -18,7 +18,7 @@ If browser storage access or a checkpoint write fails, the app remains usable fo
 
 ## Local development
 
-Use Node.js 24 and Go. The build pins Go 1.27.1; Go downloads that toolchain when needed.
+Use Node.js 24 and Go. The build pins Go 1.27.2; Go downloads that toolchain when needed.
 
 ```sh
 make install

@@ -1613,13 +1613,23 @@ export function App() {
             {history && !pendingRecovery && !runningAll && (
               <Surface padding={3} aria-label="Прежний отчёт">
                 <Stack gap={2}>
-                  <Text size="label">Сохранён прежний отчёт</Text>
+                  <Text size="label">
+                    {historyArchived.current
+                      ? "Прежний отчёт в архиве"
+                      : "Сохранён прежний отчёт"}
+                  </Text>
                   <Text size="caption" tone="secondary">
-                    {history.reason === "expired"
-                      ? "Срок продолжения истёк."
-                      : "Версии SDK или план проверки изменились."}{" "}
-                    Продолжить прежнюю проверку нельзя. Новый запуск сохранит её
-                    в локальном архиве.
+                    {historyArchived.current ? (
+                      "Он сохранён отдельно от текущего прогона и не может быть возобновлён."
+                    ) : (
+                      <>
+                        {history.reason === "expired"
+                          ? "Срок продолжения истёк."
+                          : "Версии SDK или план проверки изменились."}{" "}
+                        Продолжить прежнюю проверку нельзя. Новый запуск
+                        сохранит её в локальном архиве.
+                      </>
+                    )}
                   </Text>
                   <Text size="caption" tone="secondary">
                     Для доступа нужен тот же аккаунт и приложение LO. Результаты
