@@ -327,19 +327,7 @@ footer {
 .run-check + .run-check {
   border-top: 1px solid var(--hairline);
 }
-.run-check summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 10px;
-  cursor: pointer;
-  min-height: 60px;
-}
-.run-check summary:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: -3px;
-}
+
 .run-check-name {
   min-width: 0;
 
@@ -354,12 +342,9 @@ footer {
   flex-shrink: 0;
 }
 .run-check-detail {
-  padding: 0 20px 16px;
   overflow-wrap: anywhere;
 }
-.run-check[open] summary {
-  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
-}
+
 @media (max-width: 560px) {
   .run-outcome {
     padding: 20px 16px;
@@ -367,30 +352,12 @@ footer {
   .run-score {
     gap: 14px;
   }
-  .run-check summary {
-    padding: 12px 10px;
-  }
-  .run-check-detail {
-    padding: 0 16px 14px;
-  }
 }
 
 .sdk-versions {
   margin-bottom: 20px;
 }
-.sdk-versions summary {
-  min-height: 44px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-}
-.disclosure-chevron {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-.sdk-versions[open] .disclosure-chevron {
-  transform: rotate(180deg);
-}
+
 .sdk-versions ul {
   list-style: none;
   padding: 0;
@@ -405,16 +372,11 @@ footer {
   justify-content: space-between;
   border-bottom: 1px solid var(--hairline);
 }
-.sdk-versions summary:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 3px;
-}
 
 .manual-section {
   margin-bottom: 16px;
 }
-select:focus-visible,
-summary:focus-visible {
+select:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
 }
@@ -533,10 +495,6 @@ summary:focus-visible {
 .feed-detail {
   overflow-wrap: anywhere;
   margin-bottom: 0;
-}
-.run-feed-panel summary {
-  min-height: 44px;
-  cursor: pointer;
 }
 
 .sdk-comparison {

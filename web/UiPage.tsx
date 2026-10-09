@@ -4,6 +4,7 @@ import {
   Tabs,
   Surface,
   Dialog,
+  Disclosure,
   TextArea,
   Progress,
   Button,
@@ -78,6 +79,14 @@ export function UiPage({
         </Inline>
       </Stack>
       <div className="ui-demo-grid">
+        <Section name="Disclosure">
+          <Disclosure summary="Подробности проверки" trailing="3 шага">
+            <Text>Результаты и действия доступны после раскрытия.</Text>
+            <Button variant="secondary" onClick={() => setClicks(clicks + 1)}>
+              Проверить действие
+            </Button>
+          </Disclosure>
+        </Section>
         <Section name="Button">
           <Text size="label" tone="secondary">
             Обычная · отключена · загрузка
