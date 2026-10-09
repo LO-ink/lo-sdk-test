@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { JSDOM } from "jsdom";
+import packageMetadata from "../package.json" with { type: "json" };
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "https://sdk-test.example",
@@ -422,7 +423,10 @@ for (const legacy of [true, false])
         const exported = JSON.parse(await payload!);
         assert.equal(exported.appVersion, undefined);
         assert.equal(exported.sdkBuild, undefined);
-        assert.equal(exported.exportContext.build.appVersion, "0.4.39");
+        assert.equal(
+          exported.exportContext.build.appVersion,
+          packageMetadata.version,
+        );
         assert.equal(exported.exportContext.build.sourceRevision, "local");
         const run = exported.automatedRun;
         assert.equal(run.startedAt, before.startedAt);
@@ -459,14 +463,14 @@ for (const legacy of [true, false])
         assert.ok(prep.finishedAt);
         assert.equal(
           run.provenance.builds[prep.execution.build].appVersion,
-          "0.4.39",
+          packageMetadata.version,
         );
         const clean = run.checks.find(
           (c: { id: string }) => c.id === "cleanup",
         );
         assert.equal(
           run.provenance.builds[clean.execution.build].appVersion,
-          "0.4.39",
+          packageMetadata.version,
         );
         assert.deepEqual(
           archives.map(([key]) => [key, localStorage.getItem(key!)]),
