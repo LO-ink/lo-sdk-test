@@ -549,6 +549,9 @@ export function RunPage({
                         {check.durationMs > 0 && (
                           <Text tone="secondary" size="caption">
                             {(check.durationMs / 1000).toFixed(2)} с
+                            {check.durationExecution
+                              ? " · Время первоначальной проверки"
+                              : ""}
                           </Text>
                         )}
                       </div>

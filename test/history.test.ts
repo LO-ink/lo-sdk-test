@@ -302,3 +302,37 @@ test("quoted JSON, percent-encoded launch queries and multiline headers do not e
     assert.equal(history.report.checks[0].detail, detail);
   }
 });
+
+test("historical execution receipts remain allowlisted while exact archive bytes and owner fences remain intact", async () => {
+  const { currentBuild, recordExecution } =
+    await import("../web/provenance.ts");
+  const { storage, values, snapshot } = fixture();
+  const saved = JSON.parse(snapshot);
+  const old = { ...currentBuild, appVersion: "0.4.38" };
+  saved.report.checks[0].execution = recordExecution(saved.report, old);
+  saved.report.provenance.builds.b1.privateExtra = "private launch";
+  const original = JSON.stringify(saved);
+  values.set(lastRunKey, original);
+  const history = readHistorical(storage, "current", now)!;
+  preserveHistory(storage, history);
+  const exported = JSON.parse(historicalExport(history, owner));
+  assert.equal(exported.report.provenance.builds.b1.appVersion, "0.4.38");
+  assert.equal(exported.report.provenance.builds.b1.privateExtra, undefined);
+  assert.deepEqual(
+    exported.report.checks[0].execution,
+    saved.report.checks[0].execution,
+  );
+  assert.equal(exported.executionAttribution.unknown, 199);
+  assert.equal(
+    exported.appVersionMeaning,
+    "last-serializer-version-not-execution-provenance",
+  );
+  assert.equal(
+    JSON.parse(storage.getItem(historyKey(original))!).snapshot,
+    original,
+  );
+  assert.equal(storage.getItem(lastRunKey), original);
+  assert.throws(() =>
+    historicalExport(history, { appId: "fixture", userId: "other" }),
+  );
+});

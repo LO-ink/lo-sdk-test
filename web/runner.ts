@@ -1,3 +1,11 @@
+import {
+  normalizeProvenance,
+  recordExecution,
+  type Execution,
+  type Provenance,
+  type Preparation,
+  type ResumeVerification,
+} from "./provenance.ts";
 export type RunPhase = "automatic" | "assisted" | "observation" | "deferred";
 export type CheckState =
   | "pending"
@@ -14,6 +22,8 @@ export type CheckResult = {
   state: CheckState;
   detail: string;
   durationMs: number;
+  execution?: Execution;
+  durationExecution?: Execution;
   interrupted?: boolean;
   phase?: RunPhase;
   scopeExcluded?: boolean;
@@ -70,6 +80,7 @@ export type RunReport = {
   state: "running" | "finished" | "cancelled";
   checks: CheckResult[];
   suiteRevision?: 1;
+  provenance?: Provenance;
   assistedBridge?: "native" | "compat";
   recovery?: Record<string, Recovery>;
   resumeBlocked?: boolean;
@@ -229,10 +240,15 @@ export async function runChecks(
   options: {
     previous?: RunReport;
     id?: string;
-    prepare?: (signal: AbortSignal) => Promise<void>;
+    prepare?: (
+      signal: AbortSignal,
+      record: (step: ResumeVerification) => void,
+    ) => Promise<void>;
   } = {},
 ) {
-  const previous = options.previous;
+  const previous = options.previous
+    ? normalizeProvenance(options.previous)
+    : undefined;
   if (
     previous &&
     (!canResume(previous) || !matchesPlan(previous, [...plan, cleanup]))
@@ -246,6 +262,7 @@ export async function runChecks(
     owner: previous?.owner,
     startedAt: previous?.startedAt ?? new Date().toISOString(),
     suiteRevision: 1,
+    provenance: previous?.provenance,
     state: "running",
     checks: [...plan, cleanup].map((c) => {
       const saved = savedById.get(c.id);
@@ -262,6 +279,7 @@ export async function runChecks(
         state: "pending",
         detail: "Ещё не запускалась",
         durationMs: 0,
+        execution: { build: null, unknown: "not-evaluated" },
         ...(saved?.interrupted || saved?.state === "running"
           ? { interrupted: true }
           : {}),
@@ -270,13 +288,21 @@ export async function runChecks(
   };
   let cleanupFailed = false;
   const publish = () =>
-    update({ ...report, checks: report.checks.map((c) => ({ ...c })) });
+    update({
+      ...report,
+      provenance: report.provenance
+        ? structuredClone(report.provenance)
+        : undefined,
+      checks: report.checks.map((c) => ({ ...c })),
+    });
   async function execute(
     check: Check,
     index: number,
     currentSignal: AbortSignal,
   ) {
     const result = report.checks[index];
+    delete result.durationExecution;
+    if (!check.scopeExcluded) result.execution = recordExecution(report);
     const start = performance.now();
     let started = false;
     try {
@@ -334,7 +360,35 @@ export async function runChecks(
   }
   publish();
   try {
-    if (options.prepare) await options.prepare(signal);
+    if (options.prepare) {
+      const preparation: Preparation = {
+        execution: recordExecution(report),
+        state: "running" as "running" | "passed" | "failed" | "cancelled",
+        finishedAt: undefined as string | undefined,
+      };
+      report.provenance!.latestResumePreparation = preparation;
+      publish();
+      try {
+        await options.prepare(signal, (step) => {
+          preparation.verification ??= [];
+          if (
+            preparation.verification.length >= 2 ||
+            preparation.verification.some((v) => v.id === step.id)
+          )
+            throw new Error("Duplicate resume verification");
+          preparation.verification.push(step);
+          publish();
+        });
+        signal.throwIfAborted();
+        preparation.state = "passed";
+      } catch (error) {
+        preparation.state = signal.aborted ? "cancelled" : "failed";
+        throw error;
+      } finally {
+        preparation.finishedAt = new Date().toISOString();
+        publish();
+      }
+    }
     for (let index = 0; index < plan.length; index++) {
       if (signal.aborted || cleanupFailed) break;
       if (!unfinished(report.checks[index])) continue;

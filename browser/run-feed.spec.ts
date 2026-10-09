@@ -204,7 +204,8 @@ for (const scheme of ["light", "dark"] as const) {
                 group: "Запуск",
                 state: "passed",
                 detail: "",
-                durationMs: 0,
+                durationMs: 137,
+                durationExecution: { build: null, unknown: "legacy" },
                 evidence: "data",
               },
               {
@@ -247,6 +248,22 @@ for (const scheme of ["light", "dark"] as const) {
     expect(await gap(processed, exportButton)).toBe(16);
     expect((await restart.boundingBox())!.width).toBeLessThan(300);
     expect((await exportButton.boundingBox())!.width).toBeLessThan(268);
+    await page
+      .locator(".app:not([hidden])")
+      .getByRole("button", { name: "Все", exact: true })
+      .click();
+    await page
+      .locator("summary")
+      .filter({ hasText: "Доступность сервера" })
+      .click();
+    const duration = page.getByText("0.14 с · Время первоначальной проверки");
+    await expect(duration).toBeVisible();
+    const box = (await duration.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(320);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(320);
     await page.screenshot({
       path: `test-results/run-spacing-${scheme}.png`,
       fullPage: true,
