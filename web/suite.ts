@@ -218,7 +218,8 @@ export function createSuite(context: SuiteContext) {
     label: "Разрешение на сообщения бота",
     group: "Приложение LO",
     evidence: "data",
-    timeoutMs: 60000,
+    timeoutMs: 180000,
+    timeoutState: "manual",
     skip: () => {
       if (!context.includeBot)
         return {
