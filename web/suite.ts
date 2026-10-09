@@ -55,7 +55,6 @@ export type SuiteContext = {
   playAudio?: () => Promise<void>;
   supportsOperation?: (name: MiniAppOperation, input: unknown) => boolean;
   appearanceGuard?: (testing: boolean, operation?: MiniAppOperation) => void;
-  panelExpanded?: () => boolean | undefined;
 };
 export function createSuite(context: SuiteContext) {
   const { client } = context;
@@ -395,7 +394,6 @@ export function createSuite(context: SuiteContext) {
               interact: context.interact,
               observed: context.observed,
               appearanceGuard: context.appearanceGuard,
-              panelExpanded: context.panelExpanded,
               deferCleanup: (restore) => {
                 finalizer = restore;
               },
