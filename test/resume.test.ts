@@ -1,3 +1,4 @@
+import { normalizeProvenance } from "../web/provenance.ts";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -98,7 +99,10 @@ test("continuation preserves completed evidence and run identity, retries only u
   assert.equal(after.id, before.id);
   assert.equal(after.startedAt, before.startedAt);
   assert.equal(after.state, "finished");
-  assert.deepEqual(after.checks.slice(0, 4), before.checks.slice(0, 4));
+  assert.deepEqual(
+    after.checks.slice(0, 4),
+    normalizeProvenance(before).checks.slice(0, 4),
+  );
   assert.deepEqual(before, original);
   assert.equal(snapshots[0].checks[4].state, "pending");
   assert.equal(snapshots[0].checks[0].state, "passed");
@@ -151,7 +155,7 @@ test("fresh prerequisite failure retains results, leaves remaining checks resuma
   assert.equal(cleaned, true);
   assert.equal(after.resumeError, "New signature refused");
   assert.equal(after.state, "cancelled");
-  assert.deepEqual(after.checks[0], before.checks[0]);
+  assert.deepEqual(after.checks[0], normalizeProvenance(before).checks[0]);
   assert.equal(canResume(after), true);
 });
 
@@ -423,7 +427,7 @@ test("native SDK upgrades and schema-less historical reports cannot relabel old 
   const store = storage();
   const before = report();
   saveRun(store, before, "0.4.26", dependencies);
-  assert.deepEqual(readRun(store, dependencies), before);
+  assert.deepEqual(readRun(store, dependencies), normalizeProvenance(before));
   const priorDependencies = dependencies.replace(
     /@lo-ink\/miniapp-sdk@[^|]+/,
     (current) => `${current}-historical`,

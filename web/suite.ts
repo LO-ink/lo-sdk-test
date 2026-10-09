@@ -1,3 +1,4 @@
+import type { ResumeVerification } from "./provenance.ts";
 import type {
   MiniAppClient,
   MiniAppOperation,
@@ -1070,14 +1071,28 @@ export function createSuite(context: SuiteContext) {
       ),
     },
   });
-  const prepareResume = async (signal: AbortSignal) => {
+  const prepareResume = async (
+    signal: AbortSignal,
+    record?: (step: ResumeVerification) => void,
+  ) => {
     if (context.primary !== false) {
       await bounded(
         plan.find((check) => check.id === "server")!.execute,
         signal,
       );
+      record?.({
+        id: "server",
+        state: "passed",
+        completedAt: new Date().toISOString(),
+      });
       const signature = plan.find((check) => check.id === "signature")!;
-      if (!signature.skip?.()) await bounded(signature.execute, signal);
+      const skipped = signature.skip?.();
+      if (!skipped) await bounded(signature.execute, signal);
+      record?.({
+        id: "signature",
+        state: skipped ? "skipped" : "passed",
+        completedAt: new Date().toISOString(),
+      });
     }
     if (context.recovery) {
       for (const storage of context.recovery.written) written.add(storage);

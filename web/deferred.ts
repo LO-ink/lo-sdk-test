@@ -1,3 +1,4 @@
+import { normalizeProvenance, recordExecution } from "./provenance.ts";
 import { saveRun } from "./run-storage.ts";
 import type { MiniAppClient } from "@lo-ink/miniapp-sdk";
 import {
@@ -190,11 +191,19 @@ export function applyDeferredResult(
     !canRunDeferred(report, ticket.id, ticket)
   )
     return report;
+  const updated = normalizeProvenance(report);
+  const execution = recordExecution(updated);
   return {
-    ...report,
-    checks: report.checks.map((check) =>
+    ...updated,
+    checks: updated.checks.map((check) =>
       check.id === ticket.id && check.state === "manual"
-        ? { ...check, ...result, evidence: result.evidence }
+        ? {
+            ...check,
+            ...result,
+            evidence: result.evidence,
+            execution,
+            durationExecution: check.durationExecution ?? check.execution,
+          }
         : check,
     ),
   };

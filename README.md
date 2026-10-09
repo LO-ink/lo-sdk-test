@@ -8,7 +8,7 @@ A stopped run offers Continue and a separate Start over action. Completed result
 
 Progress is retained for 24 hours and is bound to the SDK dependency set, the exact check plan and the same LO app/user. Interrupted bot writes require a specific retry choice because a lost response does not prove that no message was sent. Missing server-owned file/message references remain unverified instead of repeating completed sends. Reports from a different SDK dependency set require a fresh run. Deferred delivery tickets remain bound to their original build.
 
-A valid debt-free report outside the continuation window or from an older SDK set remains available as a separate historical export. It keeps its original build, dates and result states, explicitly marked `historical: true` and `currentEvidence: false`. Viewing diagnostic details uses read-only `/api/verify-launch` (no session cookie, bot consent or server-owned resource changes) and requires a server-verified launch from the same registered LO app and account; reopen from LO if the launch signature has expired. Unknown properties and labelled authentication values are excluded from exports, but arbitrary unlabelled legacy prose cannot be guaranteed secret-free.
+A valid debt-free report outside the continuation window or from an older SDK set remains available as a separate historical export. It keeps recorded execution attribution (or explicit unknown provenance for legacy results), dates and result states, explicitly marked `historical: true` and `currentEvidence: false`. Viewing diagnostic details uses read-only `/api/verify-launch` (no session cookie, bot consent or server-owned resource changes) and requires a server-verified launch from the same registered LO app and account; reopen from LO if the launch signature has expired. Unknown properties and labelled authentication values are excluded from exports, but arbitrary unlabelled legacy prose cannot be guaranteed secret-free.
 
 Starting fresh preserves the exact previous snapshot privately before replacing the active run or starting host effects. Retained reports use separate immutable local keys, bounded to 20 records and 8 MiB; this preservation is never a cleanup attestation. The compact history surface exposes the most recent retained report. To free space, explicitly export your oldest archived report and confirm removal of that archive only. Current results and foreign-owner archives are not removed. Full, foreign-only, invalid or unavailable storage fails closed; use the previous account to export/remove its records or ask the device owner to repair site storage. Current eligible continuation does not depend on unrelated archive capacity. Storage comparisons detect observed concurrent changes but are not atomic cross-tab transactions.
 
@@ -141,3 +141,37 @@ match permits a new run. Changed records, failed persistence, archive collisions
 or exhausted archive limits leave new runs blocked. Archives are capped at 20
 records and 8 MiB without eviction. Local storage uses optimistic snapshot checks,
 not atomic cross-tab transactions; use one active SDK Test tab.
+
+## Result provenance
+
+Exports separate `exportContext` (the current exporting browser build) from
+`automatedRun.provenance.builds` and each check's `execution` reference.
+A receipt records the evaluating browser app version, validated Git revision
+(or `local` for an unstamped build), exact configured npm receipts, and the
+configured Go verifier contract. It is local diagnostic metadata, not a signed
+attestation or an independently observed backend/native binary identity.
+`configuredGoVerifier` must not be interpreted as a measurement of a responding
+server. `executionAttribution` counts known, unknown and unevaluated results;
+aggregate outcomes may span builds and are not current-build certification.
+
+Compatible resume preserves completed results and their execution references.
+New evaluations and deferred confirmations use the current build. A deferred
+confirmation retains the earlier measured duration with a separate
+`durationExecution` reference; the detail view labels it as the original
+evaluation duration. A genuine re-execution measures a new duration and clears
+that separate reference. The latest
+resume preparation records its own dates and server/signature outcomes without
+replacing the earlier signature check. Earlier preparation attempts are not an
+audit log. Skipped checks can identify the build evaluating a skip condition;
+scope-excluded or untouched steps have no execution timestamp.
+
+Old snapshots without execution receipts remain explicitly `unknown: legacy`.
+The storage wrapper's app version records its last serializer, not necessarily
+the original execution build. No compiler, source revision or SDK receipt is
+inferred from that wrapper. Missing or malformed provenance cannot discard valid
+results or cleanup debt. Receipts deduplicate full allowlisted content and retain
+only referenced builds plus the latest preparation, bounded to 64 builds and
+128 KiB of serialized receipt metadata. If capacity is reached, new attribution
+is explicitly unknown (`receipt-capacity`); cleanup remains available and existing
+references remain intact. Historical archives still preserve exact original
+snapshot bytes; their exports project validated provenance separately.

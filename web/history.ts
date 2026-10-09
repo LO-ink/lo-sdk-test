@@ -1,3 +1,4 @@
+import { attributionSummary, normalizeProvenance } from "./provenance.ts";
 import { readRun, readStoredRun, sameOwner } from "./run-storage.ts";
 import { hasRecoveryDebt, type RunReport } from "./runner.ts";
 import { lastRunKey, manualArchiveKey } from "./manual-recovery.ts";
@@ -92,7 +93,7 @@ export function historicalExport(
   owner: RunReport["owner"],
 ): string {
   assertHistoryOwner(history, owner);
-  const report = history.report;
+  const report = normalizeProvenance(history.report);
   return JSON.stringify(
     {
       schema: 1,
@@ -101,6 +102,8 @@ export function historicalExport(
       currentEvidence: false,
       appVersion: exportText(history.appVersion),
       dependencies: exportText(history.dependencies),
+      appVersionMeaning: "last-serializer-version-not-execution-provenance",
+      executionAttribution: attributionSummary(report),
       report: {
         id: report.id,
         owner: { appId: report.owner!.appId, userId: report.owner!.userId },
@@ -109,6 +112,7 @@ export function historicalExport(
         state: report.state,
         suiteRevision: report.suiteRevision,
         assistedBridge: report.assistedBridge,
+        provenance: report.provenance,
         checks: report.checks.map((check) => ({
           id: exportText(check.id),
           label: exportText(check.label),
@@ -116,6 +120,8 @@ export function historicalExport(
           state: check.state,
           detail: exportText(check.detail),
           durationMs: check.durationMs,
+          execution: check.execution,
+          durationExecution: check.durationExecution,
           bridge: check.bridge ? exportText(check.bridge) : undefined,
           evidence: check.evidence,
           phase: check.phase,

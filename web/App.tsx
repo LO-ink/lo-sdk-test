@@ -1,4 +1,9 @@
 import {
+  attributionSummary,
+  exportContext,
+  normalizeProvenance,
+} from "./provenance.ts";
+import {
   Button,
   Tabs,
   TextField,
@@ -1060,9 +1065,9 @@ export function App() {
         ...(previous
           ? {
               previous,
-              prepare: async (signal) => {
+              prepare: async (signal, record) => {
                 for (const suite of suites.values())
-                  await suite.prepareResume(signal);
+                  await suite.prepareResume(signal, record);
               },
             }
           : {}),
@@ -1437,14 +1442,18 @@ export function App() {
   const exportReport = async () => {
     if (exporting || pendingRecoveryRef.current) return;
     const report = {
-      createdAt: new Date().toISOString(),
-      appVersion,
-      sdkBuild,
+      exportContext: exportContext(),
+      executionAttribution: automatedRun
+        ? attributionSummary(automatedRun)
+        : null,
       bridgeCoverage: automatedRun ? bridgeCoverage(automatedRun) : [],
       adapter: client?.adapter.id ?? null,
       capabilities: [...(client?.adapter.capabilities ?? [])],
       automatedRun: automatedRun
-        ? { ...automatedRun, summary: summarize(automatedRun) }
+        ? {
+            ...normalizeProvenance(automatedRun),
+            summary: summarize(automatedRun),
+          }
         : null,
       results,
       events: eventValues,

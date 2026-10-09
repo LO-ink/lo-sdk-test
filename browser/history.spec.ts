@@ -175,6 +175,14 @@ for (const mode of [
       expect(exported.historical).toBe(true);
       expect(exported.currentEvidence).toBe(false);
       expect(exported.appVersion).toBe("0.4.29");
+      expect(exported.appVersionMeaning).toBe(
+        "last-serializer-version-not-execution-provenance",
+      );
+      expect(exported.executionAttribution.unknown).toBe(200);
+      expect(exported.report.checks[0].execution).toEqual({
+        build: null,
+        unknown: "legacy",
+      });
       expect(exported.report.checks).toHaveLength(200);
       expect(raw).not.toContain("private-");
       expect(raw).not.toContain("sdkBuild");

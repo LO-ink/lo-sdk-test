@@ -1,3 +1,4 @@
+import { normalizeProvenance } from "./provenance.ts";
 import {
   recoveryOperations,
   recoveryButtons,
@@ -188,7 +189,7 @@ export function readStoredRun(
       !validRecovery(report.recovery, report.id)
     )
       return null;
-    const restored = report as RunReport;
+    const restored = normalizeProvenance(report as RunReport);
     if (allowStale) return restored;
     if (restored.state === "running") {
       restored.state = "cancelled";

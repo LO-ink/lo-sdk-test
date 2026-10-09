@@ -284,103 +284,204 @@ for (const mode of [
   });
 }
 
-test("actual App current native resume ignores full foreign history while retaining completed evidence", async () => {
-  const { historyKey } = await import("../web/history.ts");
-  const foreign = JSON.stringify({
-    schema: 1,
-    appVersion: "0.4.29",
-    dependencies: "old@1",
-    report: {
-      id: "11111111-1111-4111-8111-111111111111",
-      owner: { appId: "foreign", userId: "other" },
-      startedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-      state: "finished",
-      checks: [
-        {
-          id: "cleanup",
-          label: "Foreign diagnostic",
-          group: "old",
-          state: "passed",
-          detail: "private diagnostic",
-          durationMs: 1,
-        },
-      ],
-      recovery: {},
-    },
-  });
-  for (let i = 0; i < 20; i++) {
-    const snapshot = foreign.replace('"old@1"', `"old@${i + 1}"`);
-    localStorage.setItem(
-      historyKey(snapshot),
-      JSON.stringify({
-        schema: 1,
-        kind: "historical-report",
-        currentEvidence: false,
-        snapshot,
-      }),
-    );
-  }
-  const archives = Object.keys(localStorage)
-    .sort()
-    .map((key) => [key, localStorage.getItem(key)]);
-  Object.assign(globalThis, {
-    LO: {
-      MiniAppNative: {
-        protocolVersion: 1,
-        generation: "history-current-resume",
-        launchData: new URLSearchParams({
-          app_id: "fixture",
-          user: JSON.stringify({ id: "42" }),
-          auth_date: String(Math.floor(Date.now() / 1000)),
-        }).toString(),
-        operations: [],
-        capabilities: [],
-        snapshot: () => ({ colorScheme: "light" }),
-        subscribe: () => () => {},
-        postMessage() {},
+for (const legacy of [true, false])
+  test(`actual App mixed-build resume/export preserves ${legacy ? "unknown legacy" : "recorded"} provenance and full foreign archives`, async () => {
+    const { historyKey } = await import("../web/history.ts");
+    const foreign = JSON.stringify({
+      schema: 1,
+      appVersion: "0.4.29",
+      dependencies: "old@1",
+      report: {
+        id: "11111111-1111-4111-8111-111111111111",
+        owner: { appId: "foreign", userId: "other" },
+        startedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+        state: "finished",
+        checks: [
+          {
+            id: "cleanup",
+            label: "Foreign diagnostic",
+            group: "old",
+            state: "passed",
+            detail: "private diagnostic",
+            durationMs: 1,
+          },
+        ],
+        recovery: {},
       },
-    },
+    });
+    for (let i = 0; i < 20; i++) {
+      const snapshot = foreign.replace('"old@1"', `"old@${i + 1}"`);
+      localStorage.setItem(
+        historyKey(snapshot),
+        JSON.stringify({
+          schema: 1,
+          kind: "historical-report",
+          currentEvidence: false,
+          snapshot,
+        }),
+      );
+    }
+    const archives = Object.keys(localStorage)
+      .sort()
+      .map((key) => [key, localStorage.getItem(key)]);
+    Object.assign(globalThis, {
+      LO: {
+        MiniAppNative: {
+          protocolVersion: 1,
+          generation: "history-current-resume",
+          launchData: new URLSearchParams({
+            app_id: "fixture",
+            user: JSON.stringify({ id: "42" }),
+            auth_date: String(Math.floor(Date.now() / 1000)),
+          }).toString(),
+          operations: [],
+          capabilities: [],
+          snapshot: () => ({ colorScheme: "light" }),
+          subscribe: () => () => {},
+          postMessage() {},
+        },
+      },
+    });
+    globalThis.fetch = async (input) =>
+      String(input).endsWith("/status")
+        ? Response.json({ appConfigured: true, botConfigured: false })
+        : String(input).endsWith("/session")
+          ? Response.json({ verified: true, appId: "fixture", userId: "42" })
+          : Response.json({}, { status: 503 });
+    try {
+      let page = render(<App />);
+      assert.equal(Boolean(page.queryByText("private diagnostic")), false);
+      fireEvent.click(page.getByRole("button", { name: "Начать проверку" }));
+      await waitFor(() => assert.ok(page.getByText("Звук")));
+      fireEvent.click(
+        page.getByRole("button", { name: "Остановить проверку" }),
+      );
+      await waitFor(() =>
+        assert.ok(page.getByRole("button", { name: "Продолжить проверку" })),
+      );
+      const old = JSON.parse(localStorage.getItem("sdk-test.last-run")!);
+      old.appVersion = "0.4.38";
+      old.report.checks[0].durationMs = 137;
+      if (legacy) {
+        delete old.report.provenance;
+        for (const check of old.report.checks) delete check.execution;
+      } else {
+        for (const build of Object.values(old.report.provenance.builds) as {
+          appVersion: string;
+          configuredGoVerifier: { toolchain: string };
+        }[]) {
+          build.appVersion = "0.4.38";
+          build.configuredGoVerifier.toolchain = "go1.27.1";
+        }
+      }
+      localStorage.setItem("sdk-test.last-run", JSON.stringify(old));
+      const before = JSON.parse(
+        localStorage.getItem("sdk-test.last-run")!,
+      ).report;
+      assert.deepEqual(before.owner, { appId: "fixture", userId: "42" });
+      page.unmount();
+      page = render(<App />);
+      fireEvent.click(
+        page.getByRole("button", { name: "Продолжить проверку" }),
+      );
+      await waitFor(() => assert.ok(page.getByText("Звук")));
+      const after = JSON.parse(
+        localStorage.getItem("sdk-test.last-run")!,
+      ).report;
+      assert.equal(after.id, before.id);
+      assert.equal(after.startedAt, before.startedAt);
+      assert.deepEqual(after.checks[0], {
+        ...before.checks[0],
+        execution: legacy
+          ? { build: null, unknown: "legacy" }
+          : before.checks[0].execution,
+      });
+      fireEvent.click(
+        page.getByRole("button", { name: "Остановить проверку" }),
+      );
+      await waitFor(() =>
+        assert.ok(page.getByRole("button", { name: "Продолжить проверку" })),
+      );
+      assert.deepEqual(
+        archives.map(([key]) => [key, localStorage.getItem(key!)]),
+        archives,
+      );
+      let payload: Promise<string> | undefined;
+      const originalCreate = URL.createObjectURL,
+        originalRevoke = URL.revokeObjectURL;
+      const originalClick = dom.window.HTMLAnchorElement.prototype.click;
+      URL.createObjectURL = (blob: Blob) => {
+        payload = blob.text();
+        return "blob:fixture";
+      };
+      URL.revokeObjectURL = () => {};
+      dom.window.HTMLAnchorElement.prototype.click = () => {};
+      try {
+        fireEvent.click(page.getByRole("button", { name: "Скачать отчёт" }));
+        await waitFor(() => assert.ok(payload));
+        const exported = JSON.parse(await payload!);
+        assert.equal(exported.appVersion, undefined);
+        assert.equal(exported.sdkBuild, undefined);
+        assert.equal(exported.exportContext.build.appVersion, "0.4.39");
+        assert.equal(exported.exportContext.build.sourceRevision, "local");
+        const run = exported.automatedRun;
+        assert.equal(run.startedAt, before.startedAt);
+        assert.equal(run.checks[0].durationMs, 137);
+        if (legacy)
+          assert.deepEqual(run.checks[0].execution, {
+            build: null,
+            unknown: "legacy",
+          });
+        else {
+          assert.deepEqual(run.checks[0].execution, before.checks[0].execution);
+          assert.equal(
+            run.provenance.builds[run.checks[0].execution.build].appVersion,
+            "0.4.38",
+          );
+          assert.equal(
+            run.provenance.builds[run.checks[0].execution.build]
+              .configuredGoVerifier.toolchain,
+            "go1.27.1",
+          );
+        }
+        const prep = run.provenance.latestResumePreparation;
+        assert.equal(prep.state, "passed");
+        assert.deepEqual(
+          prep.verification.map((v: { id: string; state: string }) => [
+            v.id,
+            v.state,
+          ]),
+          [
+            ["server", "passed"],
+            ["signature", "passed"],
+          ],
+        );
+        assert.ok(prep.finishedAt);
+        assert.equal(
+          run.provenance.builds[prep.execution.build].appVersion,
+          "0.4.39",
+        );
+        const clean = run.checks.find(
+          (c: { id: string }) => c.id === "cleanup",
+        );
+        assert.equal(
+          run.provenance.builds[clean.execution.build].appVersion,
+          "0.4.39",
+        );
+        assert.deepEqual(
+          archives.map(([key]) => [key, localStorage.getItem(key!)]),
+          archives,
+        );
+      } finally {
+        URL.createObjectURL = originalCreate;
+        URL.revokeObjectURL = originalRevoke;
+        dom.window.HTMLAnchorElement.prototype.click = originalClick;
+      }
+    } finally {
+      cleanup();
+      Reflect.deleteProperty(globalThis, "LO");
+    }
   });
-  globalThis.fetch = async (input) =>
-    String(input).endsWith("/status")
-      ? Response.json({ appConfigured: true, botConfigured: false })
-      : String(input).endsWith("/session")
-        ? Response.json({ verified: true, appId: "fixture", userId: "42" })
-        : Response.json({}, { status: 503 });
-  try {
-    let page = render(<App />);
-    assert.equal(Boolean(page.queryByText("private diagnostic")), false);
-    fireEvent.click(page.getByRole("button", { name: "Начать проверку" }));
-    await waitFor(() => assert.ok(page.getByText("Звук")));
-    fireEvent.click(page.getByRole("button", { name: "Остановить проверку" }));
-    await waitFor(() =>
-      assert.ok(page.getByRole("button", { name: "Продолжить проверку" })),
-    );
-    const before = JSON.parse(
-      localStorage.getItem("sdk-test.last-run")!,
-    ).report;
-    assert.deepEqual(before.owner, { appId: "fixture", userId: "42" });
-    page.unmount();
-    page = render(<App />);
-    fireEvent.click(page.getByRole("button", { name: "Продолжить проверку" }));
-    await waitFor(() => assert.ok(page.getByText("Звук")));
-    const after = JSON.parse(localStorage.getItem("sdk-test.last-run")!).report;
-    assert.equal(after.id, before.id);
-    assert.equal(after.startedAt, before.startedAt);
-    assert.deepEqual(after.checks[0], before.checks[0]);
-    fireEvent.click(page.getByRole("button", { name: "Остановить проверку" }));
-    await waitFor(() =>
-      assert.ok(page.getByRole("button", { name: "Продолжить проверку" })),
-    );
-    assert.deepEqual(
-      archives.map(([key]) => [key, localStorage.getItem(key!)]),
-      archives,
-    );
-  } finally {
-    cleanup();
-    Reflect.deleteProperty(globalThis, "LO");
-  }
-});
 
 test("actual App retired history does not bind current resume to unrelated archive", async () => {
   const h = await import("../web/history.ts");
