@@ -1,5 +1,5 @@
 {
-  "appVersion": "0.4.47",
+  "appVersion": "0.4.48",
   "source": "npm-registry",
   "repositories": [
     {
@@ -39,10 +39,10 @@
     },
     {
       "name": "@lo-ink/ui",
-      "version": "0.4.6",
+      "version": "0.4.7",
       "repository": "lo-ui",
-      "sourceCommit": "3c505164330e11ae3e781c8f4d8dfea63f9b9ed9",
-      "integrity": "sha512-qPWfN/3Nlm0SZDW0SrngNT4piILJNEZTTpJjTv//tbIHbzF8fiXR3py9Y7uRwZu9TDMS2uv12C1O+Fq4roSMUg=="
+      "sourceCommit": "7514c4abae0925ecc923cef79082420fd33d48a9",
+      "integrity": "sha512-3qsG8hDbBdD3T2QR0Mx1w3ozPBbh7VnpJj1eoMzndPY+pAm/IZle3mc2TpoUEWT8rsapzN2BVTRX9SkpdqMd3w=="
     }
   ],
   "goVerifier": {

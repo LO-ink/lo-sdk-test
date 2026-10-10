@@ -28,6 +28,34 @@ for (const scheme of ["light", "dark"] as const) {
     const label = demo.locator("summary");
     await expect(label).toContainText("Подробности проверки");
     await expect(label).toContainText("3 шага");
+    await page.evaluate(() => document.fonts.ready);
+    const metadata = await label
+      .getByText("3 шага", { exact: true })
+      .evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const summary = element.closest("summary")!;
+        return {
+          lines: Array.from(range.getClientRects(), (rect) => rect.toJSON()),
+          summary: summary.getBoundingClientRect().toJSON(),
+          title: summary
+            .querySelector(".lo-ui-disclosure__label")!
+            .getBoundingClientRect()
+            .toJSON(),
+          chevron: summary
+            .querySelector(".lo-ui-disclosure__chevron")!
+            .getBoundingClientRect()
+            .toJSON(),
+        };
+      });
+    expect(metadata.lines).toHaveLength(1);
+    const [line] = metadata.lines;
+    expect(line.left).toBeGreaterThanOrEqual(metadata.summary.left);
+    expect(line.right).toBeLessThanOrEqual(metadata.summary.right);
+    expect(line.top).toBeGreaterThanOrEqual(metadata.summary.top);
+    expect(line.bottom).toBeLessThanOrEqual(metadata.summary.bottom);
+    expect(line.left).toBeGreaterThanOrEqual(metadata.title.right);
+    expect(line.right).toBeLessThanOrEqual(metadata.chevron.left);
     await expect(
       label.locator("button, a, input, select, textarea"),
     ).toHaveCount(0);
