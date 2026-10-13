@@ -1614,9 +1614,7 @@ export function App() {
             }}
           />
         )}
-        {tab === "Секретарь" && (
-          <SecretaryPage authenticated={authenticated} request={api} />
-        )}
+        {tab === "Секретарь" && <SecretaryPage />}
         {tab === "Все проверки" && (
           <Stack gap={4}>
             {history && !pendingRecovery && !runningAll && (
