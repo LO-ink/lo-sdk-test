@@ -108,8 +108,8 @@ for report disclosures, tables, file timestamps and page structure.
 
 ## Secretary integration check
 
-The [dedicated Secretary flow](docs/secretary.md) verifies owner-scoped incoming,
-review draft and server sending evidence without sharing a working bot consumer.
+The [Secretary integration guide](docs/secretary.md) describes bot-owned replies
+and the retired native review check. Old stored jobs are never replayed as sends.
 
 LO uses `createLoClient` from Mini App SDK and the HTTP transport from Bot SDK. The application has no platform-adapter dependencies. Resume remains scoped to the recorded dependency set; SDK version changes do not relabel old results as newly tested.
 

@@ -835,6 +835,40 @@ test("secretary route requires signed owner and rejects foreign origins before a
   );
 });
 
+test("retired secretary HTTP route returns terminal 410 to the signed configured owner", async (t) => {
+  let calls = 0;
+  const request = await fixture(
+    t,
+    {
+      LO_SECRETARY_TEST_OWNER_ID: "9007199254740993",
+      LO_SECRETARY_TEST_STATE: "/synthetic-not-opened/state.json",
+    },
+    () => {
+      calls++;
+      assert.fail("No retired bot I/O");
+    },
+  );
+  const login = await request("/api/session", { raw: signed() });
+  const cookie = login.headers.get("set-cookie").split(";")[0];
+  for (const action of ["status", "start", "incoming", "propose", "verify"]) {
+    const response = await request(
+      "/api/secretary",
+      { action, runId: "original" },
+      cookie,
+    );
+    assert.equal(response.status, 410);
+  }
+  assert.equal(
+    (
+      await request("/api/secretary", { action: "propose" }, cookie, {
+        origin: "https://evil.example.test",
+      })
+    ).status,
+    403,
+  );
+  assert.equal(calls, 0);
+});
+
 test("bot control bodies stay small for authenticated users and never accept base64 uploads", async (t) => {
   let calls = 0;
   const request = await fixture(
