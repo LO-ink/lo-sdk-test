@@ -1,5 +1,5 @@
 {
-  "appVersion": "0.4.50",
+  "appVersion": "0.4.51",
   "source": "npm-registry",
   "repositories": [
     {
@@ -18,10 +18,10 @@
   "packages": [
     {
       "name": "@lo-ink/bot-sdk",
-      "version": "0.5.3",
+      "version": "0.6.0",
       "repository": "lo-bot-sdk",
-      "sourceCommit": "fa77d71afacda887d1cff574f6dab05f808a5233",
-      "integrity": "sha512-9gVDMkb7L52QhVm8Vwj0u42tK8nt36PGGmTN2Mg3KdVv4HEZMcdrrLif6Gos8MA9rHLjva+QbRIPQT2S70ysWg=="
+      "sourceCommit": "b9525c01079d165ee8ac171c2fe936a4a072cf08",
+      "integrity": "sha512-2GKiPu8exWj/gvmhTk1Vqs7zlZiBkgYGbi5KgTLAFuTgM1uL0GD+jQ5+h7TlYGMiRb+JbBrWUhlMdVIeaUNJaA=="
     },
     {
       "name": "@lo-ink/design-tokens",
