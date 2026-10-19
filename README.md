@@ -53,6 +53,11 @@ make container BUILD_REVISION="$(git rev-parse HEAD)"
 `make container` builds and checks `lo-sdk-test:ci`; it does not accept an
 `IMAGE` override.
 
+Browser CI checks a production build against the reviewed JavaScript, CSS and
+loaded-font budgets in [the client gate](scripts/check-client-budget.mjs), including
+actual custom-font use. Container tests report warm loopback health-response
+percentiles during uploads; these fixture measurements are not production SLOs.
+
 The container runs as node with a read-only filesystem and a private disk-backed
 upload directory. Its smoke test checks startup, the Go verifier, build identity
 and the 256 MiB memory limit. Bot controls use small JSON bodies; media is uploaded
