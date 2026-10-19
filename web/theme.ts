@@ -1,10 +1,4 @@
-/**
- * LO's palette, and how a host's theme overrides it.
- *
- * The defaults are LO's own tokens (`theme/v2/colors` in the LO app), so the
- * mini app looks like LO before any host says a word. A host that does send
- * `themeParams` wins — that is the whole point of the contract.
- */
+// Host themeParams override the default LO palette.
 export type Scheme = "light" | "dark";
 export type ThemePreference = "host" | Scheme;
 export type ThemeParams = Record<string, string | undefined>;
