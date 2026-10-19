@@ -628,7 +628,13 @@ test("workspace lock comparison ignores only unrelated local records and retains
         );
       },
     });
-    assert.equal((await check()).packages[0].state, expected, label);
+    const result = (await check()).packages[0];
+    assert.equal(result.state, expected, label);
+    assert.equal(
+      result.changeScope,
+      expected === "update" ? "build-inputs" : undefined,
+      label,
+    );
     assert.equal(blobs, 2, label);
   }
 });
@@ -775,4 +781,37 @@ test("current shipped receipt supports exactly its four SDK scopes; unconfigured
     ["unknown", "unknown"],
   );
   assert.equal(unconfiguredRequests, 0);
+});
+
+test("shared build changes are distinguished only for updates with unchanged package content", async () => {
+  for (const [changedPaths, status, expectedState, expectedScope] of [
+    [["package.json", "package-lock.json"], "ahead", "update", "build-inputs"],
+    [["scripts/build-package.mjs"], "ahead", "update", "build-inputs"],
+    [["packages/design-tokens", "package.json"], "ahead", "update", undefined],
+    [["LICENSE", "package.json"], "ahead", "update", undefined],
+    [["package.json"], "behind", "ahead", undefined],
+    [["package.json"], "diverged", "unknown", undefined],
+  ]) {
+    let requests = 0;
+    const check = createVersionChecker({
+      loadBuild: async () => ({ packages: [item("one")] }),
+      fetch: async (url) => {
+        requests++;
+        if (url.includes("/git/trees/")) {
+          const result = tree();
+          if (url.includes(latest))
+            for (const entry of result.tree)
+              if (changedPaths.includes(entry.path)) entry.sha = latest;
+          return response(result);
+        }
+        return response(
+          url.includes("/compare/") ? { status } : { sha: latest },
+        );
+      },
+    });
+    const result = (await check()).packages[0];
+    assert.equal(result.state, expectedState);
+    assert.equal(result.changeScope, expectedScope);
+    assert.equal(requests, 4);
+  }
 });

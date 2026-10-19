@@ -283,7 +283,17 @@ export function createVersionChecker({
               : compared.status === "behind"
                 ? "ahead"
                 : "unknown";
-          return { ...base, state, latestCommit: head };
+          const buildInputsOnly =
+            state === "update" &&
+            target.startsWith("packages/") &&
+            fingerprint(builtTree, [target, "LICENSE"]) ===
+              fingerprint(latestTree, [target, "LICENSE"]);
+          return {
+            ...base,
+            state,
+            latestCommit: head,
+            ...(buildInputsOnly ? { changeScope: "build-inputs" } : {}),
+          };
         } catch {
           return base;
         }

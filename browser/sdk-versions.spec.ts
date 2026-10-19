@@ -22,6 +22,7 @@ for (const width of [320, 402]) {
           packages: build.packages.map((p, i) => ({
             ...p,
             state: i % 2 ? "update" : "current",
+            ...(i === 1 ? { changeScope: "build-inputs" } : {}),
           })),
         },
       });
@@ -67,11 +68,26 @@ for (const width of [320, 402]) {
       ).toHaveCount(2);
       await expect(
         panel.getByText("Изменения в main", { exact: true }),
-      ).toHaveCount(2);
+      ).toHaveCount(1);
+      await expect(
+        panel.getByText("Изменилось окружение сборки", { exact: true }),
+      ).toHaveCount(1);
       await expect(panel.getByRole("status")).toContainText(
         "Сравнение исходников с main на GitHub ·",
       );
       await assertGeometry();
+      const packageName = panel.getByText("@lo-ink/design-tokens", {
+        exact: true,
+      });
+      expect(
+        await packageName.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          return new Set(
+            [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+          ).size;
+        }),
+      ).toBeLessThanOrEqual(2);
       await test.info().attach("source-comparison", {
         body: await panel.screenshot(),
         contentType: "image/png",

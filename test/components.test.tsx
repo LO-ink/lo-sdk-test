@@ -1924,3 +1924,28 @@ test("SDK status describes dated source comparison, preserving receipt identity 
     /Есть обновление|Актуальна|Проверяем обновления/,
   );
 });
+
+test("SDK build-input changes use neutral copy only for an update of the matching receipt", async () => {
+  const { SdkVersions } = await import("../web/SdkVersions.tsx");
+  const { default: build } = await import("../sdk-build.json", {
+    with: { type: "json" },
+  });
+  globalThis.fetch = async () =>
+    Response.json({
+      basis: "github-main",
+      checkedAt: "2026-10-19T12:34:00Z",
+      packages: build.packages.map((p, i) => ({
+        ...p,
+        state: ["update", "current", "ahead", "update"][i],
+        changeScope: "build-inputs",
+        sourceCommit: i === 3 ? "0".repeat(40) : p.sourceCommit,
+      })),
+    });
+  const page = render(<SdkVersions />);
+  await waitFor(() => assert.ok(page.getByText("Изменилось окружение сборки")));
+  const label = page.getByText("Изменилось окружение сборки");
+  assert.equal(page.getAllByText("Изменилось окружение сборки").length, 1);
+  assert.ok(label.classList.contains("lo-ui-text--secondary"));
+  for (const text of ["Совпадает с main", "Новее main", "Не проверена"])
+    assert.ok(page.getByText(text));
+});

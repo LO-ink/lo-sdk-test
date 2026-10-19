@@ -12,6 +12,7 @@ type VersionCheck = {
     version: string;
     sourceCommit: string;
     state: VersionState;
+    changeScope?: "build-inputs";
   }[];
 };
 const labels = {
@@ -61,6 +62,10 @@ export function SdkVersions() {
             result && Object.hasOwn(labels, result.state)
               ? result.state
               : "unknown";
+          const label =
+            state === "update" && result?.changeScope === "build-inputs"
+              ? "Изменилось окружение сборки"
+              : labels[state];
           return (
             <li key={p.name}>
               <Text as="span" size="caption" className="sdk-package">
@@ -80,7 +85,7 @@ export function SdkVersions() {
                 }
                 className="version-status"
               >
-                {loading ? "Сравниваем исходники…" : labels[state]}
+                {loading ? "Сравниваем исходники…" : label}
               </Text>
             </li>
           );

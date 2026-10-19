@@ -404,7 +404,9 @@ select:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 .version-status {
-  white-space: nowrap;
+  max-inline-size: 8rem;
+  white-space: normal;
+  text-align: end;
 }
 
 .run-interaction {
