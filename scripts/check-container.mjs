@@ -28,6 +28,43 @@ try {
   const container = JSON.parse(docker("inspect", name))[0];
   assert.equal(container.Config.User, "node");
   assert.equal(container.HostConfig.ReadonlyRootfs, true);
+  const runtime = JSON.parse(
+    docker(
+      "exec",
+      name,
+      "node",
+      "-e",
+      'console.log(JSON.stringify({node:process.version,globalNpm:["/usr/local/lib/node_modules/npm","/usr/local/bin/npm","/usr/local/bin/npx"].filter(require("node:fs").existsSync)}))',
+    ),
+  );
+  assert.deepEqual(
+    runtime.globalNpm,
+    [],
+    "Global npm/npx must not remain in the runtime image",
+  );
+  runtime.zlib = docker(
+    "exec",
+    name,
+    "apk",
+    "list",
+    "--installed",
+    "zlib",
+  ).match(/^zlib-(\S+) /)?.[1];
+  assert.ok(runtime.zlib, "Runtime zlib package must be installed");
+  assert.ok(
+    ["=", ">"].includes(
+      docker(
+        "exec",
+        name,
+        "apk",
+        "version",
+        "-t",
+        runtime.zlib,
+        "1.3.2-r1",
+      ).trim(),
+    ),
+    "Runtime zlib must be >=1.3.2-r1",
+  );
   const port = container.NetworkSettings.Ports["5407/tcp"][0].HostPort;
   const origin = `http://127.0.0.1:${port}`;
   let response;
@@ -50,6 +87,7 @@ try {
   console.log(
     "Container startup, Go verifier, read-only runtime and release identity verified",
   );
+  console.log(JSON.stringify(runtime));
 } finally {
   try {
     docker("rm", "-f", "-v", name);
