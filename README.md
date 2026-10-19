@@ -2,7 +2,7 @@
 
 A mini-app for checking LO SDKs, the native host and the Bot API. Hosted at [sdk-test.zay.media](https://sdk-test.zay.media).
 
-Start the guided run. Automatic checks finish before permissions and device confirmations begin. All host checks use LO’s native SDK connection. Download the resulting report after restoration. Audio, vibration, colors and gestures require confirmation of the observed device effect. A successful API response alone does not establish that effect. Skipped checks remain unverified. The manual tab runs individual methods. The UI tab shows all seventeen published UI primitives, including disabled, loading, validation, icon and typography states. Its examples work locally without bridge or Bot API calls; the theme selector applies to the whole application.
+Start the guided run. Automatic checks finish before permissions and device confirmations begin. All host checks use LO’s native SDK connection. Download the resulting report after restoration. Audio, vibration, colors and gestures require confirmation of the observed device effect. A successful API response alone does not establish that effect. Skipped checks remain unverified. The manual tab runs individual methods. The UI tab shows the published UI primitives, including disabled, loading, validation, icon and typography states. Its examples work locally without bridge or Bot API calls; the theme selector applies to the whole application.
 
 A stopped run offers Continue and a separate Start over action. Completed results, run identity and progress stay intact, including after reopening. Continuation verifies a fresh session and requests fresh bot consent in the assisted phase when unfinished bot writes need it; it never restores permission from browser storage. Run-owned cleanup state is saved before mutations so interrupted storage and screen changes can be restored before continuing. An unresolved restoration is shown explicitly and cannot be discarded by starting another run.
 
@@ -18,7 +18,8 @@ If browser storage access or a checkpoint write fails, the app remains usable fo
 
 ## Local development
 
-Use Node.js 24 and Go. The build pins Go 1.27.2; Go downloads that toolchain when needed.
+Use Node.js 24, Python 3 (for repository policy checks), and Go. The build pins
+Go 1.27.2; Go downloads that toolchain when needed.
 
 ```sh
 make install
@@ -34,17 +35,23 @@ Without LO credentials, the interface and checks independent of a signed LO laun
 
 ## Verification
 
+Host checks use `createLoClient` from Mini App SDK; server bot checks use the
+HTTP transport from Bot SDK. The application has no platform-adapter dependencies.
+
 SDKs are installed from npm at exact versions. package-lock.json records archive integrity; sdk-build.json records their source revisions. Tests compare this manifest with the installed packages.
 
 Node and Go independently verify each signed launch before issuing a session. A rejection or disagreement prevents authentication. The Go SDK is installed from its published module version and checked by go.sum. App keys and launch data reach the verifier over stdin and stay out of reports.
 
 ```sh
 make ci
+make go-ci
 npx playwright install chromium webkit
 make browser
-docker build --platform linux/amd64 -t lo-sdk-test:local .
-make container IMAGE=lo-sdk-test:local
+make container BUILD_REVISION="$(git rev-parse HEAD)"
 ```
+
+`make container` builds and checks `lo-sdk-test:ci`; it does not accept an
+`IMAGE` override.
 
 The container runs as node with a read-only filesystem and a private disk-backed
 upload directory. Its smoke test checks startup, the Go verifier, build identity
@@ -62,47 +69,42 @@ License: [MIT](LICENSE).
 
 ## Quality checks
 
-Run `make install` and `make ci` with Node.js 22.13 or newer. The same targets run
-in GitHub Actions. CI checks formatting, ESLint (including typed promises),
-TypeScript, dependency cycles and package boundaries, tests, published package
-contents, vulnerable dependencies and secrets. English documentation and comments
-are enforced; unfinished development notes and retired repository URLs fail CI.
+GitHub Actions runs the verification targets above. `make ci` checks formatting,
+ESLint, TypeScript, dependency boundaries, tests, vulnerable dependencies and
+secrets. Coverage includes unimported production files and requires 70% lines,
+statements, functions and branches. `make go-ci` checks formatting, vet,
+staticcheck, race tests, at least 85% statement coverage and vulnerabilities.
 
-Coverage includes unimported production files and fails below 70% lines and
-statements, 70% functions, or 70% branches. Reports are uploaded as CI artifacts.
+Documentation and comments must be in English; unfinished development notes and
+retired repository URLs fail policy checks. Gitleaks uses the repository
+configuration and a synthetic credential-scanner regression.
 
-`make go-ci` checks the launch verifier with race tests, static analysis, at least
-85% statement coverage and vulnerability scanning. `make container` verifies the
-release image using `BUILD_REVISION` from the commit being deployed.
+`make browser` verifies both themes at 320 px, navigation hover/focus, control
+geometry and typography, local interactions, validation, and isolated gallery
+themes. Deployment waits for this browser gate as well as code checks.
 
-Repository policy checks require Python 3 for Python comment tokenization. YAML
-comments are parsed as YAML; embedded scripts and localized scalar values retain
-their own language. LO credentials are checked by the root Gitleaks configuration
-and a synthetic scanner regression before each repository scan.
+## UI integration
 
 The application uses the published `@lo-ink/ui` primitives for controls,
 typography, surfaces, dialogs and progress, and `@lo-ink/design-tokens` through the UI stylesheet. Host theme colors map to
 the SDK semantic tokens; run controls, consent dialogs and search share those
 components. The version panel checks both UI packages against their own sources.
 
-`make browser` verifies both themes at 320 px, navigation hover/focus, control
-geometry and typography, local interactions, validation, and isolated gallery
-themes. Deployment waits for this browser gate as well as code checks.
 The native palette keeps its brand accent; white-label default controls use the
 UI package's accessible web fill. Explicit custom host action/actionText pairs
 are preserved; the host controls their contrast.
 
 Gallery image examples use the canonical LOOriginalWhiteAppIcon artwork from
 LO's native application. Text avatars are separate examples with size-aware type.
-Application CSS owns report layout and safe-area/test-observation geometry;
-control appearance belongs to the UI package.
+Application CSS owns report layout and safe-area/test-observation geometry.
+The architecture gate rejects direct typography, control appearance and shared
+SDK selector overrides; those belong to the UI package.
 
 Search fields retain the native filled shape and 38px height with a 16px input
 font. This web adaptation prevents automatic iOS focus zoom; browser pinch zoom
 remains available.
 
-LO Pro UI, Display and Mono are loaded from the design-tokens package. The
-application does not provide its own font or control appearance. ESLint requires
+LO Pro UI, Display and Mono are loaded from the design-tokens package. ESLint requires
 SDK primitives for controls and typography; native semantic markup is retained
 for report disclosures, tables, file timestamps and page structure.
 
@@ -110,12 +112,6 @@ for report disclosures, tables, file timestamps and page structure.
 
 The [Secretary integration guide](docs/secretary.md) describes bot-owned replies
 and the retired native review check. Old stored jobs are never replayed as sends.
-
-LO uses `createLoClient` from Mini App SDK and the HTTP transport from Bot SDK. The application has no platform-adapter dependencies. Resume remains scoped to the recorded dependency set; SDK version changes do not relabel old results as newly tested.
-
-The architecture gate parses application CSS and rejects direct typography,
-control appearance and shared SDK selector overrides. Layout, host tokens and
-tabular report numbers remain application responsibilities.
 
 ## Navigation and launch metadata
 
