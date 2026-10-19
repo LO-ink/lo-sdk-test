@@ -1,6 +1,6 @@
 {
   "name": "lo-sdk-test",
-  "version": "0.4.53",
+  "version": "0.4.54",
   "private": true,
   "type": "module",
   "engines": {
@@ -26,10 +26,10 @@
     "test:browser": "playwright test"
   },
   "dependencies": {
-    "@lo-ink/bot-sdk": "0.7.0",
+    "@lo-ink/bot-sdk": "0.8.0",
     "@lo-ink/design-tokens": "0.3.2",
     "@lo-ink/miniapp-sdk": "0.23.1",
-    "@lo-ink/ui": "0.4.9",
+    "@lo-ink/ui": "0.4.10",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

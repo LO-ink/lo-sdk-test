@@ -203,68 +203,135 @@ if (mode === "client") {
     req.flushHeaders();
     return { req, response };
   }
-  let rejected = 0;
-  for (let run = 0; run < 5; run++) {
-    const started = Date.now();
-    const upload = pending(
-      "/api/bot/upload?operation=sendDocument&name=fixture.bin&mime=application%2Foctet-stream",
-      "application/octet-stream",
-      size,
-    );
-    const chunk = Buffer.alloc(64 * 1024, 1);
-    upload.req.write(chunk);
-    await wait(50);
-    // Exercise the upload lock before the global POST limit is occupied.
-    const competing = pending(
-      "/api/bot/upload?operation=sendDocument&name=competing.bin",
-      "application/octet-stream",
-      size,
-    );
-    const refusal = await competing.response;
-    assert.equal(refusal.status, 429, refusal.text);
-    competing.req.destroy();
-    rejected++;
-    const controls = Array.from({ length: 7 }, () => {
-      const control = pending("/api/report", "application/json", report.length);
-      control.req.write(report.subarray(0, -1));
-      return control;
-    });
-    await wait(150);
-    const refusals = Array.from({ length: 8 }, () =>
-      pending(
-        "/api/bot/upload?operation=sendDocument&name=other.bin",
+  let rejected = 0,
+    activeUpload = 0,
+    stopped = false,
+    completed = false,
+    probeError;
+  const responseMs = [];
+  const probeController = new AbortController();
+  const warmup = await boundedFetch(base + "/api/status");
+  assert.equal(warmup.status, 200);
+  await warmup.arrayBuffer();
+  const probe = (async () => {
+    while (!stopped) {
+      const upload = activeUpload;
+      if (upload) {
+        const started = performance.now();
+        const response = await fetch(base + "/api/status", {
+          signal: AbortSignal.any([
+            probeController.signal,
+            AbortSignal.timeout(5000),
+          ]),
+        });
+        assert.equal(response.status, 200);
+        await response.arrayBuffer();
+        responseMs.push(performance.now() - started);
+        assert.ok(responseMs.length <= 2000);
+      }
+      await wait(100);
+    }
+  })().catch((error) => {
+    if (!probeController.signal.aborted) probeError = error;
+  });
+  try {
+    for (let run = 0; run < 5; run++) {
+      const started = Date.now();
+      activeUpload = run + 1;
+      const upload = pending(
+        "/api/bot/upload?operation=sendDocument&name=fixture.bin&mime=application%2Foctet-stream",
         "application/octet-stream",
         size,
-      ),
-    );
-    for (const refusal of refusals) {
-      const result = await refusal.response;
-      assert.equal(result.status, 429, result.text);
+      );
+      const chunk = Buffer.alloc(64 * 1024, 1);
+      upload.req.write(chunk);
+      await wait(50);
+      // Exercise the upload lock before the global POST limit is occupied.
+      const competing = pending(
+        "/api/bot/upload?operation=sendDocument&name=competing.bin",
+        "application/octet-stream",
+        size,
+      );
+      const refusal = await competing.response;
+      assert.equal(refusal.status, 429, refusal.text);
+      competing.req.destroy();
       rejected++;
-      refusal.req.destroy();
-    }
-    for (let bytes = chunk.length; bytes < size; bytes += chunk.length) {
-      if (!upload.req.write(chunk)) await once(upload.req, "drain");
-    }
-    upload.req.end();
-    const result = await upload.response;
-    assert.equal(result.status, 200, result.text);
-    assert.equal(JSON.parse(result.text).result.fileId, "fixture");
-    for (const control of controls) control.req.end(report.subarray(-1));
-    for (const control of controls) {
-      const result = await control.response;
+      const controls = Array.from({ length: 7 }, () => {
+        const control = pending(
+          "/api/report",
+          "application/json",
+          report.length,
+        );
+        control.req.write(report.subarray(0, -1));
+        return control;
+      });
+      await wait(150);
+      const refusals = Array.from({ length: 8 }, () =>
+        pending(
+          "/api/bot/upload?operation=sendDocument&name=other.bin",
+          "application/octet-stream",
+          size,
+        ),
+      );
+      for (const refusal of refusals) {
+        const result = await refusal.response;
+        assert.equal(result.status, 429, result.text);
+        rejected++;
+        refusal.req.destroy();
+      }
+      for (let bytes = chunk.length; bytes < size; bytes += chunk.length) {
+        if (!upload.req.write(chunk)) await once(upload.req, "drain");
+      }
+      upload.req.end();
+      const result = await upload.response;
+      activeUpload = 0;
       assert.equal(result.status, 200, result.text);
+      assert.equal(JSON.parse(result.text).result.fileId, "fixture");
+      for (const control of controls) control.req.end(report.subarray(-1));
+      for (const control of controls) {
+        const result = await control.response;
+        assert.equal(result.status, 200, result.text);
+      }
+      const metrics = await (
+        await boundedFetch(base + "/__probe/metrics")
+      ).json();
+      assert.deepEqual(metrics.files, []);
+      assert.equal(metrics.healthFailures, 0);
+      assert.match(metrics.events, /oom 0\n/);
+      assert.match(metrics.events, /oom_kill 0\n/);
+      console.log(
+        JSON.stringify({
+          run: run + 1,
+          rejected,
+          scenarioMs: Date.now() - started,
+          ...metrics,
+        }),
+      );
+      await wait(Math.max(0, 2100 - (Date.now() - started)));
     }
-    const metrics = await (
-      await boundedFetch(base + "/__probe/metrics")
-    ).json();
-    assert.deepEqual(metrics.files, []);
-    assert.equal(metrics.healthFailures, 0);
-    assert.match(metrics.events, /oom 0\n/);
-    assert.match(metrics.events, /oom_kill 0\n/);
-    console.log(JSON.stringify({ run: run + 1, rejected, ...metrics }));
-    await wait(Math.max(0, 2100 - (Date.now() - started)));
+    completed = true;
+  } finally {
+    stopped = true;
+    if (!completed) probeController.abort();
+    await probe;
   }
+  if (probeError) throw probeError;
+  assert.ok(
+    responseMs.length > 0,
+    "No health response measured during uploads",
+  );
+  responseMs.sort((a, b) => a - b);
+  console.log(
+    JSON.stringify({
+      healthResponseMs: {
+        samples: responseMs.length,
+        p50: responseMs[Math.ceil(responseMs.length * 0.5) - 1],
+        p95: responseMs[Math.ceil(responseMs.length * 0.95) - 1],
+        max: responseMs.at(-1),
+      },
+    }),
+  );
+
   assert.equal(
     (
       await json(
