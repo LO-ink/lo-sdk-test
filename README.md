@@ -40,7 +40,7 @@ Node and Go independently verify each signed launch before issuing a session. A 
 
 ```sh
 make ci
-npx playwright install chromium
+npx playwright install chromium webkit
 make browser
 docker build --platform linux/amd64 -t lo-sdk-test:local .
 make container IMAGE=lo-sdk-test:local
