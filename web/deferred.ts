@@ -52,9 +52,6 @@ export function createDeliveryCheck(report: () => RunReport | null): Check {
     }),
   };
 }
-export function canVerifyDelivery(report: RunReport | null): boolean {
-  return canRunDeferred(report, "bot:delivery", report?.owner ?? null);
-}
 export function isDeferredCheck(id: string): boolean {
   return /^native:(close|sendData)$/.test(id) || id === "bot:delivery";
 }

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  canVerifyDelivery,
+  canRunDeferred,
   createDeliveryCheck,
   createDeferredTicket,
   deferredKey,
@@ -100,7 +100,7 @@ test("real runner finishes and restores before delivery inspection; reopening co
     },
   );
   await started;
-  assert.equal(canVerifyDelivery(latest), false);
+  assert.equal(canRunDeferred(latest, "bot:delivery", owner), false);
   assert.throws(() =>
     createDeferredTicket(latest!, "bot:delivery", version, owner),
   );
@@ -114,7 +114,7 @@ test("real runner finishes and restores before delivery inspection; reopening co
     report.checks.find((c) => c.id === "bot:delivery")?.evidence,
     undefined,
   );
-  assert.equal(canVerifyDelivery(report), true);
+  assert.equal(canRunDeferred(report, "bot:delivery", owner), true);
 
   const store = storage();
   const ticket = createDeferredTicket(
