@@ -200,6 +200,7 @@ export function createHandler(configuration = process.env, dependencies = {}) {
       )
     : null;
   const now = dependencies.now ?? (() => Math.floor(Date.now() / 1000));
+  let nextErrorLogAt = -Infinity;
   const json = (response, status, body) => {
     response.writeHead(status, {
       "content-type": "application/json; charset=utf-8",
@@ -846,6 +847,12 @@ export function createHandler(configuration = process.env, dependencies = {}) {
       if (error instanceof NotAllowed && activeSession)
         activeSession.allowed = false;
       const [status, body] = errorResponse(error);
+      if (status === 500 && now() >= nextErrorLogAt) {
+        nextErrorLogAt = now() + 60;
+        console.error(
+          '{"event":"sdk_test_request_failed","category":"unexpected_error","status":500}',
+        );
+      }
       if ([411, 413, 429].includes(status)) response.shouldKeepAlive = false;
       if (!response.headersSent) json(response, status, body);
       else response.end();
