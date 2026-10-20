@@ -93,6 +93,50 @@ test("bad signature, wrong app, expired launch and foreign origins fail closed",
   });
   assert.equal(noHeader.status, 403);
 });
+test("unexpected server errors emit private, globally rate-limited diagnostics", async (t) => {
+  let clock = now;
+  let failure;
+  const logs = [];
+  t.mock.method(console, "error", (...args) => logs.push(args));
+  const request = await fixture(t, {}, undefined, () => clock, {
+    checkVersions: async () => {
+      if (failure) throw failure;
+      return {};
+    },
+  });
+  assert.equal((await request("/api/status")).status, 200);
+  assert.equal((await request("/api/sdk-versions")).status, 200);
+  assert.equal((await request("/api/session", { raw: "invalid" })).status, 401);
+  failure = Object.assign(new Error("synthetic private upstream detail"), {
+    status: 503,
+  });
+  assert.equal((await request("/api/sdk-versions")).status, 503);
+  assert.deepEqual(logs, []);
+
+  failure = new Error("synthetic private error\nwith sensitive detail");
+  const fail = () =>
+    request("/api/sdk-versions?private=synthetic-sensitive-query");
+  const first = await fail();
+  assert.equal(first.status, 500);
+  assert.deepEqual(await first.json(), {
+    message: "Сервер не выполнил проверку",
+  });
+  for (let attempt = 0; attempt < 10; attempt++)
+    assert.equal((await fail()).status, 500);
+  clock += 59;
+  assert.equal((await fail()).status, 500);
+  assert.equal(logs.length, 1);
+  clock++;
+  assert.equal((await fail()).status, 500);
+  assert.deepEqual(
+    logs,
+    Array.from({ length: 2 }, () => [
+      '{"event":"sdk_test_request_failed","category":"unexpected_error","status":500}',
+    ]),
+  );
+  assert.equal((await request("/api/status")).status, 200);
+  assert.equal(logs.length, 2);
+});
 test("valid launch sets a private session and sends only to its exact signed user", async (t) => {
   const calls = [];
   const request = await fixture(
